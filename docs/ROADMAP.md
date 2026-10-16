@@ -87,7 +87,8 @@ the VM).
 **Done when** `make data-test` passes on the VM (hashes, counts, chunk rebuild, leakage),
 the split hash is pinned, and the dev table for oracle / random / BM25 exists.
 
-**Result (2026-10-16, on the zip Yi uploaded; the VM run is the confirmation):**
+**Result (2026-10-16, on the zip Yi uploaded; confirmed on the VM the same day: same split
+hash, `data-test` 3 passed, identical tables):**
 `yfr data check` ok, `make data-test` 3 passed, `make verify` 83 passed. Found on the real
 data, and fixed:
 - The release check failed on 45 files. All are in groups we never read

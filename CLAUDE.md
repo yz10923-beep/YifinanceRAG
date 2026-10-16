@@ -285,5 +285,6 @@ dataset unpacked at `~/flowpay-dataset`. RAM measured with yiagent's ES running:
 course's pin, all counts, all 809 chunks rebuilt exactly, split hash pinned, leakage
 checks), `make verify` 83 passed, `make data-test` 3 passed. Dev table: oracle 1.0,
 wrong-oracle 0, random 0, **BM25 recall@10 0.456, MRR@10 0.287** (per type in ROADMAP).
-**Next:** Yi confirms on the VM (`mkdir -p ~/.yfr && cp .env.example ~/.yfr/.env`, then `make data-check`,
-`make data-test`); then S1b: swap file, Ollama, course dense and dense-809 rows.
+**Confirmed on the VM** (2026-10-16): `make data-check` ok with the same split hash,
+`make data-test` 3 passed, identical dev tables.
+**Next:** S1b: swap file, Ollama, course dense and dense-809 rows.
