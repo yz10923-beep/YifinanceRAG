@@ -224,7 +224,8 @@ make pg-test             # course index vs our code (offsets, passage format, ra
 make ollama-test         # our embedder reproduces the course's stored vectors (VM)
 uv run yfr compare RUN_A RUN_B   # paired: wins/losses/ties, sign test, bootstrap CI
 uv run yfr retrieval --retriever bm25|random|oracle|wrong-oracle [--split dev]
-uv run yfr retrieval --retriever course-dense|dense-809   # needs Ollama (VM)
+uv run yfr retrieval --retriever course-dense|dense-809|hybrid   # need Ollama (VM)
+    [--embed-model qwen3-embedding:4b]   # dense-809 / hybrid only; Qwen3 family only
 ```
 
 Layout: `src/yifinance_rag/data/` (dataset files and hashes, corpus + `EvidenceMap`,
@@ -306,5 +307,8 @@ course's vectors). Paired on dev: BM25 finds more gold than both dense indexes (
 -0.16 / -0.18 for dense, CIs exclude 0; MRR not distinguishable); chunking moves nothing;
 BM25's edge is Chinese word overlap, not exact codes; 36/60 dev questions are vague
 progressive-disclosure openers (ROADMAP S1b).
-**Next: S2**, hybrid RRF first; a stronger embedder (`qwen3-embedding:4b`) as one
-condition is proposed, Yi decides (ROADMAP S2).
+**S2 started** (2026-10-16): Yi chose hybrid first plus a model option for the dense
+runs. Built: `--retriever hybrid` (RRF over BM25 + dense-809, k = 60) and `--embed-model`
+(Qwen3-Embedding 0.6b/4b/8b; course model digest-pinned). `make verify` 100 passed.
+**Next:** Yi runs hybrid (0.6B, cached), then pulls `qwen3-embedding:4b` and runs
+dense-809-4b and hybrid-4b, with `yfr compare` for each (ROADMAP S2).

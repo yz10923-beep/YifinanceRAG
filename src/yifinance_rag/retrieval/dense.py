@@ -21,7 +21,13 @@ import psycopg
 
 from yifinance_rag.data.benchmark import Question
 from yifinance_rag.data.corpus import Chunk
-from yifinance_rag.embed.ollama import QUERY_INSTRUCTION, Embedder, EmbedError, query_input
+from yifinance_rag.embed.ollama import (
+    COURSE_MODEL,
+    QUERY_INSTRUCTION,
+    Embedder,
+    EmbedError,
+    query_input,
+)
 from yifinance_rag.retrieval.retrievers import Hit
 
 COURSE_DB = "course_kb"
@@ -77,10 +83,20 @@ class DenseRetriever:
         return [Hit(self.chunks[i], float(scores[i])) for i in order]
 
 
+def model_suffix(embedder: Embedder) -> str:
+    """ "" for the course's model, else "-<size>", so run names say which model ran."""
+    model = str(embedder.identity().get("model", ""))
+    return "" if model == COURSE_MODEL else "-" + model.rpartition(":")[2]
+
+
 def dense_809(chunks: Sequence[Chunk], embedder: Embedder) -> DenseRetriever:
     vectors = embedder.embed([course_style_text(c) for c in chunks])
     return DenseRetriever(
-        "dense-809", chunks, vectors, embedder, {"chunks": "benchmark-809", "text": "course-style"}
+        "dense-809" + model_suffix(embedder),
+        chunks,
+        vectors,
+        embedder,
+        {"chunks": "benchmark-809", "text": "course-style"},
     )
 
 

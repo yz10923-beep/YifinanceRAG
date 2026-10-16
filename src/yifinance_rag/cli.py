@@ -4,6 +4,8 @@ yfr data check                          verify the dataset; prints facts and pro
 yfr data path postgres/x.dump           absolute path of a dataset file (for make targets)
 yfr retrieval --retriever bm25          dev table for one retriever (no LLM, no cost)
 yfr retrieval --retriever course-dense  needs Ollama and `make course-index` (S1b)
+yfr retrieval --retriever hybrid        RRF over BM25 + dense-809 (S2); --embed-model picks
+                                        the Qwen3-Embedding size for dense-809 and hybrid
 yfr compare RUN_A RUN_B                 paired per-case comparison of two runs
 """
 
@@ -25,10 +27,17 @@ from yifinance_rag.data.check import check_dataset
 from yifinance_rag.data.corpus import EvidenceMap, benchmark_chunks, chunk_set_hash, load_docs
 from yifinance_rag.data.dataset import RELEASE_MANIFEST, DataError, Dataset, sha256_file
 from yifinance_rag.embed.cache import CachedEmbedder
-from yifinance_rag.embed.ollama import Embedder, EmbedError, OllamaEmbedder
+from yifinance_rag.embed.ollama import (
+    COURSE_MODEL,
+    EMBED_MODELS,
+    Embedder,
+    EmbedError,
+    OllamaEmbedder,
+)
 from yifinance_rag.retrieval.compare import compare, load_run, render
-from yifinance_rag.retrieval.dense import course_db_url, course_dense, dense_809
+from yifinance_rag.retrieval.dense import course_db_url, course_dense, dense_809, model_suffix
 from yifinance_rag.retrieval.evaluate import KS, CaseResult, evaluate, render_table, summarize
+from yifinance_rag.retrieval.hybrid import RRFRetriever
 from yifinance_rag.retrieval.retrievers import (
     BM25Retriever,
     OracleRetriever,
@@ -36,8 +45,16 @@ from yifinance_rag.retrieval.retrievers import (
     Retriever,
 )
 
-RETRIEVERS = ("bm25", "random", "oracle", "wrong-oracle", "dense-809", "course-dense")
-DENSE = ("dense-809", "course-dense")
+RETRIEVERS = (
+    "bm25",
+    "random",
+    "oracle",
+    "wrong-oracle",
+    "dense-809",
+    "course-dense",
+    "hybrid",
+)
+DENSE = ("dense-809", "course-dense", "hybrid")
 
 
 def _git_commit() -> str | None:
@@ -70,9 +87,9 @@ def cmd_data_check(ds: Dataset) -> int:
     return 0
 
 
-def default_embedder(settings: Settings) -> Embedder:
+def default_embedder(settings: Settings, model: str = COURSE_MODEL) -> Embedder:
     return CachedEmbedder(
-        OllamaEmbedder(settings.ollama_url), cache_dir(settings) / "embeddings.sqlite"
+        OllamaEmbedder(settings.ollama_url, model=model), cache_dir(settings) / "embeddings.sqlite"
     )
 
 
@@ -90,6 +107,9 @@ def cmd_retrieval(
     if args.split == "test" and not args.final:
         print("the test split is for a stage's final report only; Yi passes --final")
         return 2
+    if args.retriever == "course-dense" and args.embed_model != COURSE_MODEL:
+        print("course-dense is the course's index: its vectors exist only for the course's model")
+        return 2
     chunks = benchmark_chunks(load_docs(ds))
     questions, labels = load_benchmark(ds)
     picked = select(questions, labels, args.split)
@@ -99,9 +119,16 @@ def cmd_retrieval(
     elif args.retriever == "random":
         retriever = RandomRetriever(chunks, seed=args.seed)
     elif args.retriever in DENSE:
-        embedder = embedder or default_embedder(settings)
+        embedder = embedder or default_embedder(settings, args.embed_model)
         if args.retriever == "dense-809":
             retriever = dense_809(chunks, embedder)
+        elif args.retriever == "hybrid":
+            parts: list[Retriever] = [
+                BM25Retriever(chunks, k1=args.k1, b=args.b),
+                dense_809(chunks, embedder),
+            ]
+            name = "hybrid" + model_suffix(embedder)
+            retriever = RRFRetriever(name, parts, chunks, k=args.rrf_k, depth=args.depth)
         else:
             retriever = course_dense(course_db_url(settings.pg_url.get_secret_value()), embedder)
     else:
@@ -182,6 +209,9 @@ def build_parser() -> argparse.ArgumentParser:
     ret.add_argument("--k1", type=float, default=1.2)
     ret.add_argument("--b", type=float, default=0.75)
     ret.add_argument("--seed", type=int, default=0)
+    ret.add_argument("--embed-model", choices=sorted(EMBED_MODELS), default=COURSE_MODEL)
+    ret.add_argument("--rrf-k", type=int, default=60, help="RRF constant (paper value)")
+    ret.add_argument("--depth", type=int, default=100, help="hits fused per retriever")
     ret.add_argument("--out", default=str(REPO_ROOT / "evals" / "results" / "retrieval"))
     cmp = sub.add_parser("compare", help="paired comparison of two runs (B against A)")
     cmp.add_argument("run_a", type=Path)

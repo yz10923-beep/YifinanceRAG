@@ -233,6 +233,22 @@ type and per conversation mode. Order, cheapest and most likely first:
 **Done when** a dev table lists every variant per question type and mode, with paired
 comparisons, and one retrieval config is chosen for S4 with the reason.
 
+### Decided (Yi, 2026-10-16): hybrid first, plus a model option for the dense runs
+
+Built (code, 2026-10-16; `make verify` 100 passed):
+- `yfr retrieval --retriever hybrid`: `RRFRetriever` fuses BM25 and dense-809 over the
+  same 809 chunks by rank only; k = 60 (paper value, untuned), each part's top 100
+  (`--depth`); ties by best single rank, then chunk order. Run summaries record every
+  part's config, including the embedder digest.
+- `--embed-model qwen3-embedding:{0.6b,4b,8b}` for dense-809 and hybrid. Only the
+  Qwen3-Embedding family is allowed, so a switch changes model size and nothing else
+  (same query instruction, same Ollama path). The course's 0.6B stays pinned to the
+  course's digest; for 4B/8B the installed digest is recorded in the identity, the run
+  summary and the cache key. Run names carry the size (`dense-809-4b`, `hybrid-4b`);
+  course-dense refuses other models (its vectors exist only for the course's).
+- Comparisons to run: hybrid vs BM25 (does fusion add anything over the stronger part?),
+  dense-809-4b vs dense-809 (model size), hybrid-4b vs hybrid.
+
 ## S3 answer graders
 
 - Deterministic: evidence ids cited vs gold, trajectory assertions, forbidden shortcuts.

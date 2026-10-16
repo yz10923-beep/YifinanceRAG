@@ -17,6 +17,16 @@ from typing import Protocol
 
 COURSE_MODEL = "qwen3-embedding:0.6b"
 COURSE_DIGEST = "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d"
+# The models a dense run may use: the Qwen3-Embedding family only, so switching models
+# changes model size and nothing else (same query format, same Ollama path). The course's
+# model is pinned to the course's digest, because its stored vectors were made with
+# exactly those weights; for the others the installed digest is recorded in the identity
+# (and so in every run summary and cache key), since nothing external must match it.
+EMBED_MODELS: dict[str, str | None] = {
+    COURSE_MODEL: COURSE_DIGEST,
+    "qwen3-embedding:4b": None,
+    "qwen3-embedding:8b": None,
+}
 QUERY_INSTRUCTION = "Given a technical support question, retrieve relevant passages that answer it."
 
 
@@ -43,12 +53,13 @@ class OllamaEmbedder:
         base_url: str,
         *,
         model: str = COURSE_MODEL,
-        digest: str = COURSE_DIGEST,
         batch_size: int = 8,
         timeout: float = 120.0,
     ) -> None:
+        if model not in EMBED_MODELS:
+            raise ValueError(f"{model!r} is not one of {sorted(EMBED_MODELS)}")
         self.base_url = base_url.rstrip("/")
-        self.model, self.digest = model, digest
+        self.model, self.digest = model, EMBED_MODELS[model]
         self.batch_size, self.timeout = batch_size, timeout
         self._identity: dict[str, object] | None = None
 
@@ -70,15 +81,16 @@ class OllamaEmbedder:
             found = next((m for m in models if m.get("name") == self.model), None)
             if found is None:
                 raise EmbedError(f"{self.model} is not pulled; run `ollama pull {self.model}`")
-            if found.get("digest") != self.digest:
+            digest = str(found.get("digest", ""))
+            if self.digest is not None and digest != self.digest:
                 raise EmbedError(
-                    f"{self.model} has digest {found.get('digest')}, pinned {self.digest}: "
+                    f"{self.model} has digest {digest}, pinned {self.digest}: "
                     "its vectors would not be comparable with the course's"
                 )
             self._identity = {
                 "endpoint": "openai-compatible /v1/embeddings",
                 "model": self.model,
-                "revision": self.digest,
+                "revision": digest,
                 "request_options": {},
             }
         return self._identity
