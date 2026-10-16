@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "yifinance-rag"
+version = "0.0.1"
+description = "A measured RAG + agent support assistant for the FlowPay payments benchmark."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "anthropic>=0.60",
+    "pydantic>=2.7",
+    "python-dotenv>=1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/yifinance_rag"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-timeout>=2.4.0",
+]
+
+[tool.ruff]
+src = ["src"]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ASYNC240"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+explicit_package_bases = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-m 'not live and not pg'"
+timeout = 60  # a hang in async code becomes a failure with a traceback
+markers = [
+    "live: calls the real LLM API (costs money); run with `make live`",
+    "pg: needs the running pgvector from docker-compose.yml (YFR_PG_URL); run with `make pg-test`",
+]

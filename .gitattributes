@@ -1,0 +1,2 @@
+# LF everywhere: the code runs on the Linux VM (Makefile recipes need tabs and LF).
+* text=auto eol=lf

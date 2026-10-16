@@ -1,0 +1,22 @@
+# Local Postgres + pgvector (the course's image) for the vector index and integration tests.
+# The port binds to 127.0.0.1 only: reach it from the laptop with an SSH tunnel, never by
+# opening a port. The password only guards a local dev database; set POSTGRES_PASSWORD
+# (and YFR_PG_URL to match) in .env to change it.
+services:
+  pgvector:
+    image: pgvector/pgvector:0.8.2-pg17
+    environment:
+      - POSTGRES_USER=flowpay
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-flowpay}
+      - POSTGRES_DB=flowpay
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flowpay -d flowpay"]
+      interval: 5s
+      retries: 30
+
+volumes:
+  pgdata:

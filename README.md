@@ -1,0 +1,20 @@
+# YifinanceRAG
+
+A RAG + agent support assistant for FlowPay, a simulated payments platform, **measured
+rather than demoed**: retrieval ablations (dense vs BM25 vs hybrid vs reranker) scored
+against gold chunk ids, a calibrated LLM judge, and the KamaAgenticRAG course's reference
+stages as baselines on the same chat model. Plan and status: [docs/ROADMAP.md](docs/ROADMAP.md).
+
+Requires the FlowPay dataset from the KamaAgenticRAG course (程序员Carl, 卡码网). The
+dataset is not in this repo and is never committed.
+
+## Setup (Linux VM)
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # once
+unzip flowpay-dataset.zip 'flowpay-dataset/*' -d ~  # ~/flowpay-dataset/, skips __MACOSX
+mkdir -p ~/.yfr && cp .env.example ~/.yfr/.env    # then fill in ANTHROPIC_API_KEY
+make sync
+make verify
+make pg-up                                        # pgvector on 127.0.0.1:5432
+```

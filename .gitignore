@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+*.egg-info/
+.env
+
+# The FlowPay dataset is course material: it lives outside the repo (FLOWPAY_DATASET_ROOT)
+# and is never committed, nor are copies of its docs or questions.
+/data/
+flowpay-dataset/
+*.zip
+*.dump
+*.sqlite
+*.jsonl
+!tests/**/*.jsonl
+
+# Run outputs: traces and per-question events can quote documents and questions.
+evals/results/*/*/traces/
+evals/results/*/*/events/
