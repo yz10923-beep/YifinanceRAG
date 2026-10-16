@@ -301,5 +301,10 @@ course-dense (the course's own index, restored from its dump) and dense-809; `ma
 **S1 dev table done on the VM** (2026-10-16): recall@10 BM25 0.456, course-dense 0.293,
 dense-809 0.276 (MRR@10 0.287 / 0.222 / 0.222). Dense loses to BM25 overall and on no
 type wins; chunking barely matters (ROADMAP S1b).
-**Next:** Yi runs `make ollama-test` (query-path fidelity) and `yfr compare` (paired
-stats) to close S1; then S2 starts with hybrid RRF.
+**S1 closed** (2026-10-16): `make ollama-test` passed (our embedder reproduces the
+course's vectors). Paired on dev: BM25 finds more gold than both dense indexes (recall@10
+-0.16 / -0.18 for dense, CIs exclude 0; MRR not distinguishable); chunking moves nothing;
+BM25's edge is Chinese word overlap, not exact codes; 36/60 dev questions are vague
+progressive-disclosure openers (ROADMAP S1b).
+**Next: S2**, hybrid RRF first; a stronger embedder (`qwen3-embedding:4b`) as one
+condition is proposed, Yi decides (ROADMAP S2).

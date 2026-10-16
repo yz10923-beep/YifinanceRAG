@@ -180,34 +180,58 @@ recall@10 by type (BM25 / course-dense / dense-809): simple_retrieval 0.714 / 0.
 temporal_versioned 0.400 / 0.283 / 0.283; multi_source 0.345 / 0.202 / 0.167;
 tool_use_diagnostic 0.200 / 0.167 / 0.167.
 
-Reading (provisional until `yfr compare` gives the paired numbers):
-- **The hypothesis "dense wins on paraphrase" is not supported on dev.** BM25 beats both
-  dense indexes overall (recall@10 +0.16) and on no type does dense come out ahead; the
-  largest gap is simple_retrieval (10 vs 4 of 14 questions found).
-- **Chunking is not the story:** course-dense and dense-809 are within 0.02 everywhere,
-  and the course index's 0.942 ceiling never binds (both sit far below it).
-- Open, to check before believing it: whether our query path matches the course's
-  (`make ollama-test` re-embeds course chunks and compares with the dump's vectors; the
-  passage path is already shown equal by dense-809 tracking course-dense), and whether
-  the gaps survive pairing (`yfr compare`: wins/losses/ties, sign test, bootstrap CI).
-  Hypotheses, not findings: questions carry exact codes, versions and dates that BM25
-  matches and a 0.6B embedder blurs; many docs share structure (API docs, cases that
-  restate rules), which hurts dense more.
+**S1 closed (2026-10-16).** `make ollama-test` passed: our client reproduces the course's
+stored vectors, so the dense rows are the course's retrieval, not a broken setup. Paired
+(`yfr compare`, all tables in `evals/results/retrieval/s1_dev_paired.md`):
 
-What it means for the plan: the course's dense-only retrieval loses to a 60-line BM25 on
-its own benchmark (dev; test is the claim). S2's first variant is hybrid (RRF over BM25 +
-dense), then a reranker over the hybrid top 20-50.
+| B vs A on dev (60) | recall@10 B-A [95% CI] | W/L/T | sign p | MRR@10 B-A [95% CI] |
+|---|---|---|---:|---|
+| course-dense vs BM25 | -0.163 [-0.276, -0.053] | 11/21/28 | 0.110 | -0.064 [-0.171, +0.044] |
+| dense-809 vs BM25 | -0.179 [-0.292, -0.071] | 10/22/28 | 0.050 | -0.064 [-0.173, +0.045] |
+| dense-809 vs course-dense | -0.017 [-0.042, +0.000] | 0/2/58 | 0.500 | -0.000 [-0.007, +0.007] |
+
+What the dev data supports, and how strongly:
+- **BM25 finds more gold chunks in the top 10 than either dense index**: the bootstrap
+  interval excludes 0 for both; the sign test is borderline (p 0.05 / 0.11) because 28 of
+  60 cases tie. Clearest on simple_retrieval: 0 wins / 6 losses / 8 ties, p 0.031.
+- **Ranking (MRR) is not distinguishable** at n = 60: say "finds more", not "ranks better".
+- **Chunking does not matter here**: dense-809 and course-dense differ on 2 of 60 cases.
+- **The exact-code hypothesis was wrong.** Only 2 of 14 simple_retrieval questions share
+  an identifier (`FP-xxxx`, versions, ids) with their gold chunk; BM25 reaches 0.632 on
+  single-turn questions with no shared identifier. Its edge is ordinary Chinese word
+  overlap between questions and the docs they were written from (a property of a
+  benchmark generated from its corpus; say so when reporting).
+- **36 of 60 dev questions are progressive-disclosure openers** (vague by design): BM25
+  0.315 there vs 0.65 on single-turn. No retriever fixes a question that lacks the facts;
+  that is S4's job (ask the user), and S2 gains should be read per mode as well as per type.
+
+Interview line: "On the course's benchmark its dense-only retrieval found fewer gold
+chunks than a BM25 I wrote (recall@10 0.29 vs 0.46 on dev, paired CI excludes zero);
+chunking made no difference; and the reason was lexical overlap, not error codes as I
+had guessed." Test numbers come at S5.
 
 ## S2 retrieval ablations (dev only)
 
-One change per variant, each against the S1 table: hybrid (RRF over dense + BM25),
-reranker (a Qwen3 or bge reranker over the top-k), chunking variants (overlap, size,
-heading-aware), metadata filters (doc_type, version, effective dates for
-`temporal_versioned`). Hypothesis: BM25 / hybrid wins on exact tokens, dense on
-paraphrase; report per type either way.
+One change per variant, each against the S1 rows, read with `yfr compare` (paired) per
+type and per conversation mode. Order, cheapest and most likely first:
 
-**Done when** a dev table lists every variant per question type, and one retrieval
-config is chosen for S4 with the reason.
+1. **Hybrid: RRF over BM25 + dense (0.6B)**: no new compute (cached vectors). RRF needs no
+   score calibration; k = 60 as in the literature, not tuned.
+2. **A stronger embedder, as one condition**: dense-only and hybrid rows with it.
+   Proposed `qwen3-embedding:4b` (same family, prompt format and Ollama path as the
+   course's 0.6B, so only model size changes; digest pinned at first pull). 8B does not
+   fit next to Elasticsearch; bge-m3 changes family (a second condition, only if 4B is
+   inconclusive); a hosted API costs money and sends course docs to a third party.
+   It answers "is dense weak here, or is the 0.6B model weak?" (an interviewer will
+   ask); it does not change the course baseline row, which stays the course's config.
+   Cost: RAM about 3 GB while embedding (stop ES for that hour), roughly 1-1.5 h of CPU
+   for the 809 chunks once, then cached. Decision: Yi.
+3. **Reranker** over the hybrid top 20-50 (a Qwen3 or bge reranker).
+4. **Metadata filters** (doc_type, version, effective dates) for temporal_versioned.
+5. Chunking variants last: S1 showed chunking moves almost nothing.
+
+**Done when** a dev table lists every variant per question type and mode, with paired
+comparisons, and one retrieval config is chosen for S4 with the reason.
 
 ## S3 answer graders
 

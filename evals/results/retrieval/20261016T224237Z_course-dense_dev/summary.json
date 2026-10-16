@@ -1,0 +1,83 @@
+{
+  "retriever": "course-dense",
+  "config": {
+    "collection": "flowpay_docs_v1_qwen3_06b",
+    "chunks": 712,
+    "embedder": {
+      "endpoint": "openai-compatible /v1/embeddings",
+      "model": "qwen3-embedding:0.6b",
+      "revision": "ac6da0dfba84a81fdbfbaf330198c33cd77c4cdfc53e8bc50eb581914a15621d",
+      "request_options": {}
+    }
+  },
+  "split": "dev",
+  "cases": 60,
+  "cases_without_doc_evidence": 0,
+  "rows": [
+    {
+      "type": "simple_retrieval",
+      "n": 14,
+      "recall@5": 0.2857142857142857,
+      "recall@10": 0.2857142857142857,
+      "complete@10": 0.2857142857142857,
+      "mrr@10": 0.17142857142857143
+    },
+    {
+      "type": "multi_document",
+      "n": 10,
+      "recall@5": 0.4,
+      "recall@10": 0.5,
+      "complete@10": 0.2,
+      "mrr@10": 0.41261904761904766
+    },
+    {
+      "type": "multi_hop",
+      "n": 12,
+      "recall@5": 0.16666666666666666,
+      "recall@10": 0.2916666666666667,
+      "complete@10": 0.08333333333333333,
+      "mrr@10": 0.21319444444444444
+    },
+    {
+      "type": "temporal_versioned",
+      "n": 5,
+      "recall@5": 0.16666666666666666,
+      "recall@10": 0.2833333333333333,
+      "complete@10": 0.0,
+      "mrr@10": 0.13999999999999999
+    },
+    {
+      "type": "multi_source",
+      "n": 14,
+      "recall@5": 0.08928571428571429,
+      "recall@10": 0.20238095238095238,
+      "complete@10": 0.0,
+      "mrr@10": 0.20215419501133788
+    },
+    {
+      "type": "tool_use_diagnostic",
+      "n": 5,
+      "recall@5": 0.05,
+      "recall@10": 0.16666666666666666,
+      "complete@10": 0.0,
+      "mrr@10": 0.145
+    },
+    {
+      "type": "all",
+      "n": 60,
+      "recall@5": 0.20555555555555557,
+      "recall@10": 0.2930555555555555,
+      "complete@10": 0.11666666666666667,
+      "mrr@10": 0.22232804232804235
+    }
+  ],
+  "release_manifest_sha256": "2e50d09e8898ce0aa4eb3f02698ac0ef76484f9e9c90c4ffac318d12d3e77a5f",
+  "split_sha256": "152d6325581bf5859919b1bb0da912fb6e8df555795105406610d48325c9f3d6",
+  "chunk_set_sha256": "16da2198534c1a42e2f50fd3319a5dfd0249243a8a502676362c0c619fd43a93",
+  "index_chunk_set_sha256": "9a886a274765b3cb9d0d7c58ac441ea9ac93ec39684ebc2734649583952336b6",
+  "index_chunks": 712,
+  "recall_ceiling": 0.9416666666666667,
+  "embeddings_computed": 60,
+  "git_commit": "d8cf4a13646b2ed5d48aed46269c8d78281b7770",
+  "created": "20261016T224237Z"
+}
