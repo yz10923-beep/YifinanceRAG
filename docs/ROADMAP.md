@@ -124,17 +124,42 @@ wrong. Leads for S2, not acted on: section-level ranking inside the right doc, d
 retrieval for paraphrase, query rewriting for the progressive-disclosure openers (vague
 by design).
 
-### S1b: dense baselines
+### S1b: dense baselines (code done 2026-10-16; the embedding runs are Yi's, on the VM)
 
-- Swap file, Ollama, `qwen3-embedding:0.6b` with its digest checked against the course's
-  pinned revision (`ac6da0df...`), the course's query instruction for queries.
-- Embedding cache keyed by (model identity, text sha256); the identity check borrowed
-  from the course's `same_vector_space`.
-- Two dense rows: **the course's index** (its 712-chunk pgvector dump, restored and
-  queried as the course does, mapped to gold ids by span) and **dense over the
-  benchmark's 809 chunks** (separates "chunking" from "dense vs BM25").
+Claude's container can't reach Ollama's registry (403), so everything except the
+embedding calls was built and checked here; tests use a fake Ollama HTTP server.
 
-**Done when** the dev table has oracle, random, BM25, course dense and dense-809, per
+- `OllamaEmbedder`: the course's exact request (`/v1/embeddings`, `encoding_format:
+  float`, no options), `qwen3-embedding:0.6b` **refused unless its digest is the course's
+  pinned `ac6da0df...`** (a re-pointed tag would put queries in another vector space).
+  Queries get the course's instruction (`Instruct: ...\nQuery: ...`); passages don't.
+- `CachedEmbedder`: SQLite at `~/.yfr/cache/embeddings.sqlite`, keyed by (embedder
+  identity, text sha256); a second run sends nothing to Ollama (tested).
+- `course-dense`: the course's collection, restored by `make course-index` into database
+  `course_kb` (tables and data only; its guard triggers need functions the dump lacks).
+  Its `build_config` is checked against our embedder (`same_vector_space`, borrowed from
+  the course) before any query.
+- `dense-809`: the benchmark's chunks embedded with the same model in the course's
+  passage format, so against course-dense **only the chunking differs**.
+- Both rank by exact cosine in numpy, ties in (doc_id, chunk_no) order, like the course's
+  SQL. Embedding failures stop the run with exit 3 and write no scores.
+
+Checked on the real data (`make pg-test`, 3 passed):
+- All 712 course chunk offsets point into our doc text (the course and we count the same
+  characters), so `EvidenceMap` maps course chunks to gold ids by span.
+- `course_style_text` reproduces the course's stored chunk text exactly for every course
+  chunk that is a whole benchmark section.
+- numpy's top 10 equals pgvector's (`ORDER BY 1 - (embedding <=> q) DESC, doc_id,
+  chunk_no`) on 8 probe vectors.
+
+Found: the course chunker drops all 100 title-only `c001` sections, and 9 of 126 dev gold
+ids are `c001`. **Recall ceiling of the course index on dev: 0.942** (simple_retrieval
+1.0, temporal_versioned 1.0, multi_source 0.964, multi_document 0.9,
+tool_use_diagnostic 0.9, multi_hop 0.875). The course's own scorer can't hit `c001`
+either. Runs print and record this ceiling (`recall_ceiling` in summary.json), so the
+course row is read against what its index could reach.
+
+**Done when** the dev table has oracle, random, BM25, course-dense and dense-809, per
 type, each pointing to an exact index build.
 
 ## S2 retrieval ablations (dev only)

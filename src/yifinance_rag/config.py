@@ -38,8 +38,12 @@ class Settings(BaseModel):
     dataset_root: Path | None = None
     # The local pgvector from docker-compose.yml. A secret: it carries the password.
     pg_url: SecretStr = SecretStr("postgresql://flowpay:flowpay@127.0.0.1:5432/flowpay")
+    # Ollama on the VM (embeddings only). Its port stays on 127.0.0.1.
+    ollama_url: str = "http://127.0.0.1:11434"
+    # Embedding cache; None means ~/.yfr/cache (resolved when used, so tests get their HOME).
+    cache_dir: Path | None = None
 
-    @field_validator("dataset_root")
+    @field_validator("dataset_root", "cache_dir")
     @classmethod
     def _expand_home(cls, v: Path | None) -> Path | None:
         # python-dotenv leaves "~" as is; expand it here so every caller gets a real path.
@@ -131,3 +135,7 @@ def dataset_root(settings: Settings, *, repo_root: Path = REPO_ROOT) -> Path:
         listed = ", ".join(f"{m}/" for m in missing)
         raise ConfigError(f"{root} has no {listed}; expected the flowpay-dataset/ folder itself")
     return root
+
+
+def cache_dir(settings: Settings) -> Path:
+    return settings.cache_dir or Path.home() / ".yfr" / "cache"

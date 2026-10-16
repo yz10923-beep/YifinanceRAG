@@ -7,6 +7,7 @@ import pytest
 from yifinance_rag.config import (
     ConfigError,
     Settings,
+    cache_dir,
     dataset_root,
     default_dotenv_paths,
     load_settings,
@@ -26,6 +27,8 @@ def test_defaults() -> None:
     assert s.dataset_root is None
     assert s.pg_url.get_secret_value().startswith("postgresql://")
     assert "127.0.0.1:5432" in s.pg_url.get_secret_value()
+    assert s.ollama_url == "http://127.0.0.1:11434"
+    assert cache_dir(s) == Path.home() / ".yfr" / "cache"
 
 
 def test_dataset_root_read_unprefixed_and_tilde_expanded(tmp_path: Path) -> None:

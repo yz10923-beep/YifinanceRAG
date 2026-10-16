@@ -1,7 +1,9 @@
 """`yfr` command line.
 
 yfr data check                          verify the dataset; prints facts and problems
+yfr data path postgres/x.dump           absolute path of a dataset file (for make targets)
 yfr retrieval --retriever bm25          dev table for one retriever (no LLM, no cost)
+yfr retrieval --retriever course-dense  needs Ollama and `make course-index` (S1b)
 """
 
 from __future__ import annotations
@@ -14,12 +16,17 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from yifinance_rag.config import REPO_ROOT, ConfigError, load_settings
+import psycopg
+
+from yifinance_rag.config import REPO_ROOT, ConfigError, Settings, cache_dir, load_settings
 from yifinance_rag.data.benchmark import load_benchmark, select, split_hash
 from yifinance_rag.data.check import check_dataset
 from yifinance_rag.data.corpus import EvidenceMap, benchmark_chunks, chunk_set_hash, load_docs
 from yifinance_rag.data.dataset import RELEASE_MANIFEST, DataError, Dataset, sha256_file
-from yifinance_rag.retrieval.evaluate import KS, evaluate, render_table, summarize
+from yifinance_rag.embed.cache import CachedEmbedder
+from yifinance_rag.embed.ollama import Embedder, EmbedError, OllamaEmbedder
+from yifinance_rag.retrieval.dense import course_db_url, course_dense, dense_809
+from yifinance_rag.retrieval.evaluate import KS, CaseResult, evaluate, render_table, summarize
 from yifinance_rag.retrieval.retrievers import (
     BM25Retriever,
     OracleRetriever,
@@ -27,7 +34,8 @@ from yifinance_rag.retrieval.retrievers import (
     Retriever,
 )
 
-RETRIEVERS = ("bm25", "random", "oracle", "wrong-oracle")
+RETRIEVERS = ("bm25", "random", "oracle", "wrong-oracle", "dense-809", "course-dense")
+DENSE = ("dense-809", "course-dense")
 
 
 def _git_commit() -> str | None:
@@ -60,7 +68,23 @@ def cmd_data_check(ds: Dataset) -> int:
     return 0
 
 
-def cmd_retrieval(ds: Dataset, args: argparse.Namespace) -> int:
+def default_embedder(settings: Settings) -> Embedder:
+    return CachedEmbedder(
+        OllamaEmbedder(settings.ollama_url), cache_dir(settings) / "embeddings.sqlite"
+    )
+
+
+def recall_ceiling(results: Sequence[CaseResult], reachable: set[str]) -> float:
+    """Mean recall a perfect ranker over this index could reach: gold chunks that no
+    index chunk maps to can never be retrieved."""
+    if not results:
+        return 0.0
+    return sum(len(set(r.gold) & reachable) / len(r.gold) for r in results) / len(results)
+
+
+def cmd_retrieval(
+    ds: Dataset, settings: Settings, args: argparse.Namespace, embedder: Embedder | None = None
+) -> int:
     if args.split == "test" and not args.final:
         print("the test split is for a stage's final report only; Yi passes --final")
         return 2
@@ -72,15 +96,28 @@ def cmd_retrieval(ds: Dataset, args: argparse.Namespace) -> int:
         retriever = BM25Retriever(chunks, k1=args.k1, b=args.b)
     elif args.retriever == "random":
         retriever = RandomRetriever(chunks, seed=args.seed)
+    elif args.retriever in DENSE:
+        embedder = embedder or default_embedder(settings)
+        if args.retriever == "dense-809":
+            retriever = dense_809(chunks, embedder)
+        else:
+            retriever = course_dense(course_db_url(settings.pg_url.get_secret_value()), embedder)
     else:
         retriever = OracleRetriever(chunks, labels, shift=int(args.retriever == "wrong-oracle"))
 
-    results, skipped = evaluate(retriever, picked, labels, EvidenceMap(chunks), k=max(KS))
+    emap = EvidenceMap(chunks)
+    results, skipped = evaluate(retriever, picked, labels, emap, k=max(KS))
     rows = summarize(results)
     table = render_table(rows)
+    index = getattr(retriever, "chunks", chunks)
+    reachable = {e for c in index for e in emap.ids_for(c)}
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    out = Path(args.out) / f"{stamp}_{retriever.name}_{args.split}"
+    base = Path(args.out) / f"{stamp}_{retriever.name}_{args.split}"
+    out, n = base, 1
+    while out.exists():  # two runs in the same second
+        n += 1
+        out = base.with_name(f"{base.name}_{n}")
     out.mkdir(parents=True)
     summary = {
         "retriever": retriever.name,
@@ -92,6 +129,10 @@ def cmd_retrieval(ds: Dataset, args: argparse.Namespace) -> int:
         "release_manifest_sha256": sha256_file(ds.path(RELEASE_MANIFEST)),
         "split_sha256": split_hash(labels.values()),
         "chunk_set_sha256": chunk_set_hash(chunks),
+        "index_chunk_set_sha256": chunk_set_hash(index),
+        "index_chunks": len(index),
+        "recall_ceiling": recall_ceiling(results, reachable),
+        "embeddings_computed": getattr(embedder, "computed", None),
         "git_commit": _git_commit(),
         "created": stamp,
     }
@@ -107,6 +148,7 @@ def cmd_retrieval(ds: Dataset, args: argparse.Namespace) -> int:
         f"{retriever.name} on {args.split}: {len(results)} cases ({skipped} without doc evidence)"
     )
     print(table)
+    print(f"recall ceiling of this index: {summary['recall_ceiling']:.3f}")
     print(f"\nwritten to {out}")
     return 0
 
@@ -115,7 +157,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="yfr")
     sub = parser.add_subparsers(dest="command", required=True)
     data = sub.add_parser("data", help="dataset checks")
-    data.add_argument("action", choices=["check"])
+    data.add_argument("action", choices=["check", "path"])
+    data.add_argument("relative", nargs="?", help="for `path`: a dataset-relative file")
     ret = sub.add_parser("retrieval", help="score a retriever against gold doc evidence")
     ret.add_argument("--retriever", choices=RETRIEVERS, required=True)
     ret.add_argument("--split", choices=["dev", "test"], default="dev")
@@ -130,13 +173,24 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        ds = Dataset.from_settings(load_settings())
+        settings = load_settings()
+        ds = Dataset.from_settings(settings)
+        if args.command == "data" and args.action == "path":
+            path = ds.path(args.relative or "")
+            if not path.is_file():
+                raise DataError(f"no file {args.relative!r} in the dataset")
+            print(path)
+            return 0
         if args.command == "data":
             return cmd_data_check(ds)
-        return cmd_retrieval(ds, args)
+        return cmd_retrieval(ds, settings, args)
     except (ConfigError, DataError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
+    except (EmbedError, psycopg.Error) as e:
+        # an infra failure: the run stops and writes no scores
+        print(f"infra error, no scores written: {e}", file=sys.stderr)
+        return 3
 
 
 if __name__ == "__main__":

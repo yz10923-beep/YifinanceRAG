@@ -219,13 +219,18 @@ make sync / make verify  # install; ruff + mypy --strict + pytest (synthetic dat
 make pg-up / pg-down     # pgvector on 127.0.0.1:5432
 make data-check          # real dataset: hashes, counts, chunk rebuild, split, leakage
 make data-test           # the same as pytest assertions (marker `dataset`, VM only)
+make course-index        # the course's pgvector dump -> database course_kb (after pg-up)
+make pg-test             # course index vs our code (offsets, passage format, ranking)
 uv run yfr retrieval --retriever bm25|random|oracle|wrong-oracle [--split dev]
+uv run yfr retrieval --retriever course-dense|dense-809   # needs Ollama (VM)
 ```
 
 Layout: `src/yifinance_rag/data/` (dataset files and hashes, corpus + `EvidenceMap`,
 benchmark `Question` vs `Label`, pins, `check_dataset`), `src/yifinance_rag/retrieval/`
-(tokenizer, BM25, retrievers, metrics), `src/yifinance_rag/cli.py` (`yfr`),
-`tests/synthetic.py` (a tiny dataset in the real layout, for `make verify`).
+(tokenizer, BM25, retrievers, metrics, `dense.py`), `src/yifinance_rag/embed/` (Ollama
+client pinned to the course's model digest, SQLite embedding cache),
+`src/yifinance_rag/cli.py` (`yfr`), `tests/synthetic.py` (a tiny dataset in the real
+layout) and `tests/fake_ollama.py` (a local HTTP stand-in), both for `make verify`.
 
 ## Invariants (keep these true)
 - **No ground truth reaches the agent**: not `ground_truth`, `resolved_*`,
@@ -287,4 +292,9 @@ checks), `make verify` 83 passed, `make data-test` 3 passed. Dev table: oracle 1
 wrong-oracle 0, random 0, **BM25 recall@10 0.456, MRR@10 0.287** (per type in ROADMAP).
 **Confirmed on the VM** (2026-10-16): `make data-check` ok with the same split hash,
 `make data-test` 3 passed, identical dev tables.
-**Next:** S1b: swap file, Ollama, course dense and dense-809 rows.
+**S1b code done** (2026-10-16): Ollama client (digest-pinned), embedding cache,
+course-dense (the course's own index, restored from its dump) and dense-809; `make verify`
+93 passed, `make pg-test` 3 passed on the real data. Course index recall ceiling on dev
+0.942 (it drops the `c001` title sections).
+**Next:** Yi on the VM: swap file, Ollama + model (digest must be `ac6da0df...`),
+`make course-index`, `make pg-test`, then the course-dense and dense-809 dev runs.

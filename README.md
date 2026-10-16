@@ -28,3 +28,11 @@ uv run yfr retrieval --retriever bm25            # dev split; also random, oracl
 
 Each run writes `evals/results/retrieval/<run>/summary.json` (metrics per question type,
 plus the release, split and chunk-set hashes and the git commit) and `table.md`.
+
+Dense baselines (S1b) need Ollama with the course's embedding model on the VM:
+
+```bash
+make pg-up && make course-index && make pg-test   # the course's own index, checked
+uv run yfr retrieval --retriever course-dense     # the course's index, the course's queries
+uv run yfr retrieval --retriever dense-809        # same model, the benchmark's chunking
+```

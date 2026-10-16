@@ -1,4 +1,4 @@
-.PHONY: sync lint type test verify live pg-up pg-down pg-test data-check data-test
+.PHONY: sync lint type test verify live pg-up pg-down pg-test data-check data-test course-index
 
 sync:
 	uv sync
@@ -33,4 +33,11 @@ data-check:
 	uv run yfr data check
 
 data-test:
-	uv run pytest -m dataset -v
+	uv run pytest -m "dataset and not pg" -v
+
+# The course's own index (its pgvector dump) into database course_kb, tables and data only
+# (its guard triggers need functions the dump doesn't carry). Needs `make pg-up`.
+course-index:
+	docker compose exec -T pgvector sh -c 'dropdb -U flowpay --if-exists course_kb && createdb -U flowpay course_kb && psql -qU flowpay -d course_kb -c "CREATE EXTENSION vector"'
+	docker compose exec -T pgvector pg_restore --no-owner --no-privileges --section=pre-data --section=data -U flowpay -d course_kb < "$$(uv run -q yfr data path postgres/flowpay_knowledge.dump)"
+	docker compose exec -T pgvector psql -U flowpay -d course_kb -c "SELECT collection_id, count(*) FROM chunks GROUP BY 1"

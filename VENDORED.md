@@ -22,7 +22,7 @@ changes beyond that.
 | `src/yifinance_rag/trace/analyze.py` | `src/yi_agent/trace/analyze.py` | one comment (no `yi trace` CLI here) |
 | `src/yifinance_rag/context.py` | `src/yi_agent/context.py` | none |
 | `src/yifinance_rag/outputs.py` | `src/yi_agent/outputs.py` | none |
-| `src/yifinance_rag/config.py` | `src/yi_agent/config.py` | `YFR_` prefix, `~/.yfr/.env`; this repo's fields (`FLOWPAY_DATASET_ROOT` unprefixed, `YFR_PG_URL` as a secret; no ES); `dataset_root()` check (set, unzipped, expected layout, outside the repo) |
+| `src/yifinance_rag/config.py` | `src/yi_agent/config.py` | `YFR_` prefix, `~/.yfr/.env`; this repo's fields (`FLOWPAY_DATASET_ROOT` unprefixed, `YFR_PG_URL` as a secret; no ES); `dataset_root()` check (set, unzipped, expected layout, outside the repo); S1b: `ollama_url`, `cache_dir` + `cache_dir()` |
 | `tests/fakes.py` | same | none |
 | `tests/conftest.py` | same | also sets `USERPROFILE`, so the isolated home works on Windows too |
 | `tests/unit/test_anthropic_provider.py` | same | one annotation so tests pass `mypy --strict` (here `make type` checks tests too) |
