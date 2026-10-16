@@ -12,6 +12,7 @@ from yifinance_rag.data.benchmark import Label, Question, load_benchmark, parse_
 from yifinance_rag.data.corpus import Chunk, EvidenceMap, benchmark_chunks, load_docs
 from yifinance_rag.data.dataset import Dataset
 from yifinance_rag.retrieval.bm25 import BM25
+from yifinance_rag.retrieval.compare import bootstrap_ci, compare, load_run, sign_test
 from yifinance_rag.retrieval.evaluate import CaseResult, evaluate, render_table, summarize
 from yifinance_rag.retrieval.retrievers import (
     BM25Retriever,
@@ -147,3 +148,39 @@ def test_cli_writes_a_run_and_guards_the_test_split(
     assert {"release_manifest_sha256", "split_sha256", "chunk_set_sha256"} <= set(summary)
     assert main(["retrieval", "--retriever", "bm25", "--split", "test", "--out", str(out)]) == 2
     assert "--final" in capsys.readouterr().out
+
+
+def test_sign_test_and_bootstrap_by_hand() -> None:
+    assert sign_test(0, 0) == 1.0
+    assert sign_test(5, 5) == 1.0
+    assert sign_test(8, 0) == pytest.approx(2 / 2**8)
+    assert sign_test(1, 9) == pytest.approx(2 * 11 / 2**10)
+    lo, hi = bootstrap_ci([1.0] * 10)
+    assert lo == hi == 1.0
+    lo, hi = bootstrap_ci([0.0, 1.0] * 50)
+    assert lo < 0.5 < hi and hi - lo < 0.3
+
+
+def test_compare_runs_through_the_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = write_dataset(tmp_path / "flowpay-dataset")
+    monkeypatch.setenv("FLOWPAY_DATASET_ROOT", str(root))
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / "runs"
+    assert main(["retrieval", "--retriever", "oracle", "--out", str(out)]) == 0
+    assert main(["retrieval", "--retriever", "wrong-oracle", "--out", str(out)]) == 0
+    oracle, wrong = sorted(out.iterdir(), key=lambda p: "wrong" in p.name)
+    _, a = load_run(oracle)
+    _, b = load_run(wrong)
+    (overall,) = [r for r in compare(a, b, "recall@10") if r.group == "all"]
+    assert (overall.mean_a, overall.mean_b, overall.losses, overall.wins) == (1.0, 0.0, 2, 0)
+    capsys.readouterr()
+    assert main(["compare", str(oracle), str(wrong)]) == 0
+    assert "| all | 2 | 1.000 | 0.000 | -1.000 |" in capsys.readouterr().out
+    assert (
+        main(["retrieval", "--retriever", "bm25", "--split", "test", "--final", "--out", str(out)])
+        == 0
+    )
+    test_run = next(p for p in out.iterdir() if p.name.endswith("_test"))
+    assert main(["compare", str(oracle), str(test_run)]) == 1  # different cases: refused

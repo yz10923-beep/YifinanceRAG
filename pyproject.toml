@@ -56,12 +56,13 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-m 'not live and not pg and not dataset'"
+addopts = "-m 'not live and not pg and not dataset and not ollama'"
 timeout = 60  # a hang in async code becomes a failure with a traceback
 markers = [
     "live: calls the real LLM API (costs money); run with `make live`",
     "pg: needs the running pgvector from docker-compose.yml (YFR_PG_URL); run with `make pg-test`",
     "dataset: needs the real FlowPay dataset (FLOWPAY_DATASET_ROOT); run with `make data-test`",
+    "ollama: needs Ollama with the course's embedding model (VM); run with `make ollama-test`",
 ]
 filterwarnings = [
     # jieba 0.42.1 has non-raw regex strings; harmless, raised when its .pyc is first built

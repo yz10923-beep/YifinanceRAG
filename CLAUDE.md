@@ -221,6 +221,8 @@ make data-check          # real dataset: hashes, counts, chunk rebuild, split, l
 make data-test           # the same as pytest assertions (marker `dataset`, VM only)
 make course-index        # the course's pgvector dump -> database course_kb (after pg-up)
 make pg-test             # course index vs our code (offsets, passage format, ranking)
+make ollama-test         # our embedder reproduces the course's stored vectors (VM)
+uv run yfr compare RUN_A RUN_B   # paired: wins/losses/ties, sign test, bootstrap CI
 uv run yfr retrieval --retriever bm25|random|oracle|wrong-oracle [--split dev]
 uv run yfr retrieval --retriever course-dense|dense-809   # needs Ollama (VM)
 ```
@@ -296,5 +298,8 @@ wrong-oracle 0, random 0, **BM25 recall@10 0.456, MRR@10 0.287** (per type in RO
 course-dense (the course's own index, restored from its dump) and dense-809; `make verify`
 93 passed, `make pg-test` 3 passed on the real data. Course index recall ceiling on dev
 0.942 (it drops the `c001` title sections).
-**Next:** Yi on the VM: swap file, Ollama + model (digest must be `ac6da0df...`),
-`make course-index`, `make pg-test`, then the course-dense and dense-809 dev runs.
+**S1 dev table done on the VM** (2026-10-16): recall@10 BM25 0.456, course-dense 0.293,
+dense-809 0.276 (MRR@10 0.287 / 0.222 / 0.222). Dense loses to BM25 overall and on no
+type wins; chunking barely matters (ROADMAP S1b).
+**Next:** Yi runs `make ollama-test` (query-path fidelity) and `yfr compare` (paired
+stats) to close S1; then S2 starts with hybrid RRF.

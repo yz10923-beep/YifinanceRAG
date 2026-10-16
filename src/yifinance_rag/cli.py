@@ -4,6 +4,7 @@ yfr data check                          verify the dataset; prints facts and pro
 yfr data path postgres/x.dump           absolute path of a dataset file (for make targets)
 yfr retrieval --retriever bm25          dev table for one retriever (no LLM, no cost)
 yfr retrieval --retriever course-dense  needs Ollama and `make course-index` (S1b)
+yfr compare RUN_A RUN_B                 paired per-case comparison of two runs
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from yifinance_rag.data.corpus import EvidenceMap, benchmark_chunks, chunk_set_h
 from yifinance_rag.data.dataset import RELEASE_MANIFEST, DataError, Dataset, sha256_file
 from yifinance_rag.embed.cache import CachedEmbedder
 from yifinance_rag.embed.ollama import Embedder, EmbedError, OllamaEmbedder
+from yifinance_rag.retrieval.compare import compare, load_run, render
 from yifinance_rag.retrieval.dense import course_db_url, course_dense, dense_809
 from yifinance_rag.retrieval.evaluate import KS, CaseResult, evaluate, render_table, summarize
 from yifinance_rag.retrieval.retrievers import (
@@ -153,6 +155,20 @@ def cmd_retrieval(
     return 0
 
 
+def cmd_compare(args: argparse.Namespace) -> int:
+    summary_a, a = load_run(args.run_a)
+    summary_b, b = load_run(args.run_b)
+    for key in ("split", "split_sha256", "release_manifest_sha256"):
+        if summary_a.get(key) != summary_b.get(key):
+            print(f"error: the runs differ in {key}; a paired comparison needs the same cases")
+            return 1
+    for name in args.metric or ["recall@10", "mrr@10"]:
+        rows = compare(a, b, name)
+        print(render(rows, str(summary_a["retriever"]), str(summary_b["retriever"]), name))
+        print()
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="yfr")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -167,11 +183,17 @@ def build_parser() -> argparse.ArgumentParser:
     ret.add_argument("--b", type=float, default=0.75)
     ret.add_argument("--seed", type=int, default=0)
     ret.add_argument("--out", default=str(REPO_ROOT / "evals" / "results" / "retrieval"))
+    cmp = sub.add_parser("compare", help="paired comparison of two runs (B against A)")
+    cmp.add_argument("run_a", type=Path)
+    cmp.add_argument("run_b", type=Path)
+    cmp.add_argument("--metric", action="append", help="default: recall@10 and mrr@10")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "compare":
+        return cmd_compare(args)
     try:
         settings = load_settings()
         ds = Dataset.from_settings(settings)

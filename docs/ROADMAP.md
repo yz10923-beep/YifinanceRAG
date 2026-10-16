@@ -162,6 +162,42 @@ course row is read against what its index could reach.
 **Done when** the dev table has oracle, random, BM25, course-dense and dense-809, per
 type, each pointing to an exact index build.
 
+**Result (VM, 2026-10-16, commit `d8cf4a1`):** model digest = the course's pin;
+`make course-index` 712 chunks; `make pg-test` 3 passed. Embedding the 809 chunks took
+about 14 minutes on the VM's 4 vCPUs (then cached); with ES and Ollama loaded, 3.0 GiB
+available, swap 22 MiB used.
+
+| dev (60) | recall@5 | recall@10 | complete@10 | MRR@10 | ceiling |
+|---|---:|---:|---:|---:|---:|
+| oracle | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |
+| random | 0.000 | 0.000 | 0.000 | 0.000 | 1.000 |
+| **BM25** | **0.290** | **0.456** | **0.317** | **0.287** | 1.000 |
+| course-dense (the course's index) | 0.206 | 0.293 | 0.117 | 0.222 | 0.942 |
+| dense-809 (same model, benchmark chunks) | 0.193 | 0.276 | 0.117 | 0.222 | 1.000 |
+
+recall@10 by type (BM25 / course-dense / dense-809): simple_retrieval 0.714 / 0.286 /
+0.286; multi_document 0.600 / 0.500 / 0.500; multi_hop 0.292 / 0.292 / 0.250;
+temporal_versioned 0.400 / 0.283 / 0.283; multi_source 0.345 / 0.202 / 0.167;
+tool_use_diagnostic 0.200 / 0.167 / 0.167.
+
+Reading (provisional until `yfr compare` gives the paired numbers):
+- **The hypothesis "dense wins on paraphrase" is not supported on dev.** BM25 beats both
+  dense indexes overall (recall@10 +0.16) and on no type does dense come out ahead; the
+  largest gap is simple_retrieval (10 vs 4 of 14 questions found).
+- **Chunking is not the story:** course-dense and dense-809 are within 0.02 everywhere,
+  and the course index's 0.942 ceiling never binds (both sit far below it).
+- Open, to check before believing it: whether our query path matches the course's
+  (`make ollama-test` re-embeds course chunks and compares with the dump's vectors; the
+  passage path is already shown equal by dense-809 tracking course-dense), and whether
+  the gaps survive pairing (`yfr compare`: wins/losses/ties, sign test, bootstrap CI).
+  Hypotheses, not findings: questions carry exact codes, versions and dates that BM25
+  matches and a 0.6B embedder blurs; many docs share structure (API docs, cases that
+  restate rules), which hurts dense more.
+
+What it means for the plan: the course's dense-only retrieval loses to a 60-line BM25 on
+its own benchmark (dev; test is the claim). S2's first variant is hybrid (RRF over BM25 +
+dense), then a reranker over the hybrid top 20-50.
+
 ## S2 retrieval ablations (dev only)
 
 One change per variant, each against the S1 table: hybrid (RRF over dense + BM25),

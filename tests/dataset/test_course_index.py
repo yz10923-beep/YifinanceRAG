@@ -13,6 +13,7 @@ from yifinance_rag.config import load_settings
 from yifinance_rag.data.benchmark import Question
 from yifinance_rag.data.corpus import benchmark_chunks, load_docs
 from yifinance_rag.data.dataset import Dataset
+from yifinance_rag.embed.ollama import OllamaEmbedder
 from yifinance_rag.retrieval.dense import (
     COURSE_COLLECTION,
     CourseIndex,
@@ -76,3 +77,16 @@ def test_numpy_ranking_equals_the_course_sql(index: CourseIndex) -> None:
             dense = DenseRetriever("d", index.chunks, index.vectors, _Fixed(vec), {})
             hits = dense.search(Question(case_id="q", text="x"), 10)
             assert [h.chunk.chunk_id for h in hits] == sql
+
+
+@pytest.mark.ollama
+def test_our_embedder_reproduces_the_course_vectors(index: CourseIndex) -> None:
+    """Our client, same model and digest, on the course's own chunk texts, must give the
+    vectors stored in its dump; then course-dense differs from the course only in nothing."""
+    embedder = OllamaEmbedder(load_settings().ollama_url)
+    picks = list(range(0, len(index.chunks), len(index.chunks) // 8))[:8]
+    ours = embedder.embed([index.chunks[i].text for i in picks])
+    for i, vec in zip(picks, ours, strict=True):
+        a, b = np.asarray(vec), np.asarray(index.vectors[i])
+        cosine = float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b)))
+        assert cosine > 0.999, (index.chunks[i].chunk_id, cosine)
