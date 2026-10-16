@@ -117,7 +117,7 @@ def dataset_root(settings: Settings, *, repo_root: Path = REPO_ROOT) -> Path:
     if root is None:
         raise ConfigError(
             "FLOWPAY_DATASET_ROOT is not set; point it at the unpacked flowpay-dataset/ folder "
-            "(e.g. `cp .env.example ~/.yfr/.env`, which sets ~/flowpay-dataset)"
+            "(e.g. `mkdir -p ~/.yfr && cp .env.example ~/.yfr/.env`, which sets ~/flowpay-dataset)"
         )
     if root.suffix.lower() == ".zip":
         raise ConfigError(f"{root} is the zip; unzip it and point at the flowpay-dataset/ folder")
