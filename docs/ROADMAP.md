@@ -42,8 +42,8 @@ condition). Decide that at S4's start, with a measurement.
 
 ## S1 data + retrieval eval
 
-Split into S1a (no embeddings; done in code 2026-10-16, pending the VM check) and S1b
-(dense retrieval, needs Ollama on the VM).
+Split into S1a (no embeddings; done 2026-10-16) and S1b (dense retrieval, needs Ollama on
+the VM).
 
 ### S1a: data, blinding, metrics, BM25
 
@@ -86,6 +86,42 @@ Split into S1a (no embeddings; done in code 2026-10-16, pending the VM check) an
 
 **Done when** `make data-test` passes on the VM (hashes, counts, chunk rebuild, leakage),
 the split hash is pinned, and the dev table for oracle / random / BM25 exists.
+
+**Result (2026-10-16, on the zip Yi uploaded; the VM run is the confirmation):**
+`yfr data check` ok, `make data-test` 3 passed, `make verify` 83 passed. Found on the real
+data, and fixed:
+- The release check failed on 45 files. All are in groups we never read
+  (`evidence_audit`, `offline_fixture_validation`, `generation_sources`, part of
+  `dataset_documentation`), which the course-member zip ships trimmed or newer. Every group
+  we read passes, including the audit journal's hash. Now strict on those 7 groups
+  (`REQUIRED_GROUPS`) and reporting the rest.
+- The benchmark names `c001` after the doc title, not `""`. With that, all 809 ids,
+  headings and texts match `knowledge_chunks.jsonl`.
+- Indexed docs are now checked against the release's own `visibility` labels
+  (`agent_knowledge`, `agent_via_typed_tools`): a leakage rule from the dataset itself.
+
+Dev table (60 questions, all with doc evidence; runs under `evals/results/retrieval/`,
+commit `3a9e555`):
+
+| retriever | recall@5 | recall@10 | complete@10 | MRR@10 |
+|---|---:|---:|---:|---:|
+| oracle | 1.000 | 1.000 | 1.000 | 1.000 |
+| wrong-oracle | 0.000 | 0.000 | 0.000 | 0.000 |
+| random (chance 10/809 = 0.012) | 0.000 | 0.000 | 0.000 | 0.000 |
+| **BM25** | **0.290** | **0.456** | **0.317** | **0.287** |
+
+BM25 by type (recall@10 / MRR@10): simple_retrieval 0.714 / 0.214, multi_document
+0.600 / 0.510, multi_hop 0.292 / 0.209, temporal_versioned 0.400 / 0.192, multi_source
+0.345 / 0.330, tool_use_diagnostic 0.200 / 0.200. Small n per type (5-14): read
+differences under about 0.15 as noise.
+
+What the misses look like (dev, BM25): 24 of 60 cases have no gold chunk in the top 10;
+when gold is found it is often at rank 2-10, not 1 (simple_retrieval: 71% found, MRR
+0.21). 30 of 300 top-5 slots are the right doc's wrong section. The title chunks are not
+the cause (1 of 300 slots); the hypothesis that short title sections win on length was
+wrong. Leads for S2, not acted on: section-level ranking inside the right doc, dense
+retrieval for paraphrase, query rewriting for the progressive-disclosure openers (vague
+by design).
 
 ### S1b: dense baselines
 

@@ -84,7 +84,10 @@ Layout inside the zip (`flowpay-dataset/`):
 - `data/index/knowledge_chunks.jsonl`: **the benchmark's own chunking**, 809 chunks,
   sha256 pinned in `data/index/index_manifest.json`. Each row has `evidence_id`
   (`doc:KB-BR-001#c001`), doc_id, section, title, version, effective dates, rule_ids, and
-  the `tool` that should find it (`search_business_rules`, `search_api_docs`, ...).
+  the `tool` that should find it (`search_business_rules`, `search_api_docs`, ...). The
+  chunk text is in `content`; also `source_path`, `api_versions`, `product_area`.
+  Front-matter `doc_type` has 6 values: the release_notes folder holds 4 `release_note`
+  and 6 `migration_guide` docs.
 - `data/generated/canonical/`: already generated (153 MB), although the dataset README
   says to generate it with the simulator: `flowpay.sqlite` (business tables), `runtime/`
   (`api_requests.jsonl` 32 MB, `usage_buckets.jsonl` 20 MB,
@@ -100,6 +103,14 @@ Layout inside the zip (`flowpay-dataset/`):
 - `benchmark/readable/`: the questions as readable Markdown, one file per type.
 - `postgres/flowpay_knowledge.dump`: the course's built pgvector collection.
 - `src/flowpay_simulator/` incl. `simulated_user.py`: deterministic, stdlib only.
+- `data/releases/flowpay_dataset_v1/release_manifest.json` (sha256 = the course's pin):
+  11 artifact groups, each with a `visibility` (`agent_knowledge`,
+  `agent_via_typed_tools`, `hidden_evaluation`, `forbidden_to_agent`, ...) and an
+  `access_policy`; the dataset's own leakage rules. Its `quality_gates` claim every
+  question's doc evidence is retrievable in some top 20 (`fully_retrievable_top20`
+  300/300). The course-member zip ships 4 groups we don't read trimmed or newer
+  (`evidence_audit`, `offline_fixture_validation`, `generation_sources`, half of
+  `dataset_documentation`); the 7 groups we read are intact.
 - `docs/`: design specs in Chinese (business rules master table, corpus constraints,
   simulator design, the 300-question benchmark spec). Read the benchmark spec before
   writing graders.
@@ -257,9 +268,10 @@ only, so these rules stay:
   merged into `main` at stage ends, as in kama and yiagent. Commit there, and **push when
   each task Yi assigned is finished; don't ask first** (Yi, 2026-10-16). `make verify`
   passes before every push.
-- Claude's cloud container has no dataset (course material stays on the VM). Code is
-  written against the formats read from the course code and checked on the VM by
-  `make data-check` / `make data-test`; Yi sends back their output.
+- Data in Claude's cloud container: when Yi uploads the zip to a session, Claude unpacks
+  it in its scratchpad (never in the repo) and runs `yfr data check`, `make data-test`
+  and the no-cost retrieval runs itself. The VM stays the source of truth: anything that
+  costs money, and confirming results, runs there.
 - Security: a file in `Desktop/learn-claude-code/` is named with an Anthropic API key;
   Yi was told to revoke it. Never put keys in file names, traces or commits.
 
@@ -269,9 +281,9 @@ dataset unpacked at `~/flowpay-dataset`. RAM measured with yiagent's ES running:
 3.8 GiB, pgvector 26 MiB, 4.1 GiB available, no swap. S0/S1 open questions decided
 (docs/ROADMAP.md): embed once and cache, plus a 2 GiB swap file; BM25 in-process with jieba.
 
-**Current: S1 part 1 (S1a)** built: dataset loaders with hash checks, label blinding
-(opaque case ids), leakage tests, the benchmark's chunking rebuilt and cross-checked,
-span-based mapping to gold ids, retrieval metrics with oracle / null / wrong checks, BM25
-(jieba + an identifier pre-pass), `yfr data check` and `yfr retrieval`.
-**Next:** Yi runs `make data-check` and `make data-test` on the VM; pin the split hash
-from that output; then the BM25 / oracle / random dev table; then S1b (dense).
+**S1a done** (2026-10-16, on the uploaded zip): dataset checks pass (release hash = the
+course's pin, all counts, all 809 chunks rebuilt exactly, split hash pinned, leakage
+checks), `make verify` 83 passed, `make data-test` 3 passed. Dev table: oracle 1.0,
+wrong-oracle 0, random 0, **BM25 recall@10 0.456, MRR@10 0.287** (per type in ROADMAP).
+**Next:** Yi confirms on the VM (`cp .env.example ~/.yfr/.env`, then `make data-check`,
+`make data-test`); then S1b: swap file, Ollama, course dense and dense-809 rows.
