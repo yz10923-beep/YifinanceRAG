@@ -3,8 +3,10 @@ map from any chunk back to the benchmark's gold evidence ids.
 
 The benchmark's rule (the course's `scripts/benchmark/evidence.py`): drop the front
 matter, split the body at lines starting with `## `, skip blank sections. The first
-section (the `# Title` line and any intro) is `c001`. Offsets here are character offsets
-into the whole file, so chunks from any chunking map onto the same sections.
+section (the `# Title` line and any intro) is `c001`, and its heading is the title.
+Checked against all 809 rows of knowledge_chunks.jsonl: same ids, headings and text.
+Offsets here are character offsets into the whole file, so chunks from any chunking map
+onto the same sections.
 """
 
 from __future__ import annotations
@@ -34,7 +36,7 @@ class Doc:
 @dataclass(frozen=True)
 class Section:
     ordinal: int  # 1-based: c001, c002, ...
-    heading: str  # text after `## `; "" for the title section
+    heading: str  # text after `## `; for the title section, text after `# `
     start: int
     end: int
 
@@ -75,23 +77,22 @@ def front_matter(text: str) -> tuple[dict[str, str], int]:
 
 def benchmark_sections(text: str) -> list[Section]:
     _, body = front_matter(text)
-    spans: list[tuple[int, int, str]] = []  # start, end, first line
+    spans: list[tuple[int, int]] = []
     start = offset = body
-    first = ""
     for line in text[body:].splitlines(keepends=True):
         if line.startswith("## ") and offset > start:
-            spans.append((start, offset, first))
+            spans.append((start, offset))
             start = offset
-        if offset == start:
-            first = line
         offset += len(line)
     if offset > start:
-        spans.append((start, offset, first))
+        spans.append((start, offset))
     sections: list[Section] = []
-    for s, e, first_line in spans:
-        if not text[s:e].strip():
+    for s, e in spans:
+        lines = [ln.strip() for ln in text[s:e].splitlines() if ln.strip()]
+        if not lines:
             continue
-        heading = first_line[3:].strip() if first_line.startswith("## ") else ""
+        first = lines[0]
+        heading = first.lstrip("#").strip() if first.startswith(("## ", "# ")) else ""
         sections.append(Section(len(sections) + 1, heading, s, e))
     return sections
 

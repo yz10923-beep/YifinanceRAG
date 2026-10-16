@@ -74,15 +74,15 @@ doc_type: api_doc
 # The benchmark's chunking of the docs above, written by hand from the rule (not by our
 # code), so the rebuild is checked against an independent answer.
 CHUNKS = [
-    ("KB-API-033", "c001", ""),
+    ("KB-API-033", "c001", "幂等键"),
     ("KB-API-033", "c002", "用法"),
     ("KB-API-033", "c003", "冲突"),
-    ("KB-BR-012", "c001", ""),
+    ("KB-BR-012", "c001", "退款资格、金额与时间窗口"),
     ("KB-BR-012", "c002", "时间窗口"),
     ("KB-BR-012", "c003", "部分退款"),
     ("KB-BR-012", "c004", "示例"),
     ("KB-BR-012", "c005", "示例"),
-    ("KB-TS-012", "c001", ""),
+    ("KB-TS-012", "c001", "FP-4041 资源不存在或不可见"),
     ("KB-TS-012", "c002", "现象"),
     ("KB-TS-012", "c003", "常见原因"),
     ("KB-TS-012", "c004", "处理步骤"),
@@ -158,27 +158,41 @@ def write_dataset(root: Path) -> Path:
 
 
 def write_release(root: Path) -> None:
-    listed = [
-        *DOCS,
-        "data/index/knowledge_chunks.jsonl",
-        "benchmark/resolved/resolved_blueprints.jsonl",
-    ]
-    artifacts = [
-        {"path": rel, "sha256": _sha(root / rel), "bytes": (root / rel).stat().st_size}
-        for rel in listed
-    ]
-    release = {
-        "status": "frozen",
-        "release_id": "synthetic",
-        "artifact_groups": [
-            {
-                "group_id": "all",
-                "visibility": "mixed",
-                "file_count": len(artifacts),
-                "artifacts": artifacts,
-            }
+    """The real release's group ids and visibility labels; groups with no synthetic
+    files are listed empty. `generation_sources` lists a file the zip doesn't ship, as the
+    real course-member zip does."""
+    files = {
+        ("published_knowledge", "agent_knowledge"): list(DOCS),
+        ("knowledge_index", "retrieval_runtime"): ["data/index/knowledge_chunks.jsonl"],
+        ("benchmark_design", "hidden_evaluation"): [],
+        ("compiled_scenarios", "generator_internal"): [],
+        ("canonical_agent_data", "agent_via_typed_tools"): [],
+        ("canonical_audit_data", "forbidden_to_agent"): [],
+        ("resolved_evidence", "hidden_evaluation"): [
+            "benchmark/resolved/resolved_blueprints.jsonl"
         ],
     }
+    groups: list[dict[str, object]] = [
+        {
+            "group_id": gid,
+            "visibility": vis,
+            "file_count": len(rels),
+            "artifacts": [
+                {"path": rel, "sha256": _sha(root / rel), "bytes": (root / rel).stat().st_size}
+                for rel in rels
+            ],
+        }
+        for (gid, vis), rels in files.items()
+    ]
+    groups.append(
+        {
+            "group_id": "generation_sources",
+            "visibility": "provenance_source",
+            "file_count": 1,
+            "artifacts": [{"path": "src/not_shipped.py", "sha256": "0" * 64, "bytes": 1}],
+        }
+    )
+    release = {"status": "frozen", "release_id": "synthetic", "artifact_groups": groups}
     path = root / RELEASE_MANIFEST
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(release))

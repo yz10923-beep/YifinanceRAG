@@ -31,9 +31,15 @@ def check_dataset(ds: Dataset) -> Report:
     r.facts["release_manifest_sha256"] = release_sha
     if release_sha != pins.RELEASE_MANIFEST_SHA256:
         r.problems.append("release manifest differs from the course's pinned release")
-    r.problems += ds.verify_release()
+    problems, others = ds.verify_release()
+    r.problems += problems
+    r.facts["unrequired_groups"] = others
 
     docs = load_docs(ds)
+    visible = ds.agent_visible_paths()
+    hidden = sorted(d.path for d in docs if d.path not in visible)
+    if hidden:
+        r.problems.append(f"{len(hidden)} indexed docs are not agent-visible, e.g. {hidden[:5]}")
     by_folder = dict(sorted(Counter(doc_folder(d) for d in docs).items()))
     r.facts["docs_by_folder"] = by_folder
     if by_folder != pins.DOCS_BY_FOLDER:

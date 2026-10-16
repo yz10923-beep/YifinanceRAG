@@ -15,6 +15,21 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from yifinance_rag.config import Settings, dataset_root
 
 RELEASE_MANIFEST = "data/releases/flowpay_dataset_v1/release_manifest.json"
+# Release groups this repo reads (or must know are intact, like the audit journal). The
+# course-member zip ships other groups trimmed or newer (hidden-validation outputs,
+# generator sources, some docs); those are reported, not required.
+REQUIRED_GROUPS = (
+    "published_knowledge",
+    "knowledge_index",
+    "benchmark_design",
+    "compiled_scenarios",
+    "canonical_agent_data",
+    "canonical_audit_data",
+    "resolved_evidence",
+)
+# The release's own access policy: what an agent may read (docs via RAG, data via typed
+# tools). Everything else is hidden evaluation or forbidden.
+AGENT_VISIBILITY = ("agent_knowledge", "agent_via_typed_tools")
 
 
 class DataError(Exception):
@@ -98,13 +113,31 @@ class Dataset:
         except ValidationError as e:
             raise DataError(f"{RELEASE_MANIFEST} has an unexpected shape: {e}") from e
 
-    def verify_release(self) -> list[str]:
-        """Problems with the files the release manifest lists (size and sha256 of each)."""
+    def agent_visible_paths(self) -> set[str]:
+        """Files the release lets an agent read, by its visibility labels."""
+        return {
+            a.path
+            for g in self.release().artifact_groups
+            if g.visibility in AGENT_VISIBILITY
+            for a in g.artifacts
+        }
+
+    def verify_release(self) -> tuple[list[str], dict[str, str]]:
+        """Problems with the required groups' files (size and sha256 of each), and for
+        the other groups, how many of their files are missing or changed."""
         problems: list[str] = []
+        others: dict[str, str] = {}
         release = self.release()
         if release.status != "frozen":
             problems.append(f"release status is {release.status!r}, expected 'frozen'")
+        groups = {g.group_id for g in release.artifact_groups}
+        if missing_groups := sorted(set(REQUIRED_GROUPS) - groups):
+            problems.append(f"release has no group {missing_groups}")
         for group in release.artifact_groups:
+            if group.group_id not in REQUIRED_GROUPS:
+                bad = sum(not self._intact(a) for a in group.artifacts)
+                others[group.group_id] = f"{bad}/{len(group.artifacts)} missing or changed"
+                continue
             if len(group.artifacts) != group.file_count:
                 problems.append(
                     f"group {group.group_id}: lists {len(group.artifacts)} files, "
@@ -118,4 +151,8 @@ class Dataset:
                     problems.append(f"size differs: {artifact.path}")
                 elif sha256_file(path) != artifact.sha256:
                     problems.append(f"sha256 differs: {artifact.path}")
-        return problems
+        return problems, others
+
+    def _intact(self, artifact: Artifact) -> bool:
+        path = self.path(artifact.path)
+        return path.is_file() and sha256_file(path) == artifact.sha256

@@ -51,7 +51,7 @@ def test_front_matter_reads_scalars_and_finds_the_body() -> None:
 def test_sections_follow_the_benchmark_rule() -> None:
     text = "---\ndoc_id: D\n---\n# T\n\nintro\n\n## A\n\na\n### sub\n\nstill A\n\n## B\nb\n"
     sections = benchmark_sections(text)
-    assert [(s.ordinal, s.heading) for s in sections] == [(1, ""), (2, "A"), (3, "B")]
+    assert [(s.ordinal, s.heading) for s in sections] == [(1, "T"), (2, "A"), (3, "B")]
     assert text[sections[0].start : sections[0].end] == "# T\n\nintro\n\n"
     assert "### sub" in text[sections[1].start : sections[1].end]  # only `## ` splits
     assert sections[-1].end == len(text)
@@ -75,12 +75,13 @@ def test_chunk_check_reports_drift(ds: Dataset) -> None:
 
 
 def test_release_check_finds_changed_files(ds: Dataset) -> None:
-    assert ds.verify_release() == []
+    assert ds.verify_release() == ([], {"generation_sources": "1/1 missing or changed"})
+    assert ds.agent_visible_paths() == set(DOCS)
     doc = ds.path(next(iter(DOCS)))
     doc.write_text(doc.read_text().replace("FP-4041", "FP-4042"))
-    assert any("sha256 differs" in p for p in ds.verify_release())
+    assert any("sha256 differs" in p for p in ds.verify_release()[0])
     doc.unlink()
-    assert any("missing" in p for p in ds.verify_release())
+    assert any("missing" in p for p in ds.verify_release()[0])
 
 
 def test_paths_cannot_escape_the_dataset(ds: Dataset) -> None:
