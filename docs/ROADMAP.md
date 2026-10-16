@@ -8,7 +8,7 @@ Rules for every stage (CLAUDE.md "Invariants"): no ground truth reaches the agen
 have oracle / null / wrong checks inside `make verify`; tune on dev (60), report on test
 (240) once; one condition per variant; infra failures go to `errors.jsonl`, not scores.
 
-## S0 scaffold (done 2026-10-16, pending Yi's first VM run)
+## S0 scaffold (done 2026-10-16, closed on the VM)
 
 - uv + Python 3.12, `make verify` = ruff check + ruff format --check + mypy --strict
   (src and tests) + pytest.
@@ -19,65 +19,86 @@ have oracle / null / wrong checks inside `make verify`; tune on dev (60), report
 - Config: `FLOWPAY_DATASET_ROOT` (the unpacked `flowpay-dataset/` folder, checked to be
   outside the repo), `YFR_PG_URL`, `ANTHROPIC_API_KEY`; `.env` and data gitignored.
 
-**Done when** `make verify` passes on the VM and `make pg-up` brings pgvector up healthy.
+**Result (VM, 2026-10-16):** `make verify` 61 passed; `make pg-up` healthy; dataset
+unpacked at `~/flowpay-dataset`.
 
 ### Decided: where things run (2026-10-16)
 Yi: **everything runs on the VM** (Ubuntu 24.04, 4 vCPU, 7.8 GiB RAM, no swap). The laptop
-is for editing only.
+is for editing only. Claude's cloud container has no dataset; it writes code against the
+formats in the course code, and the VM checks them (`make data-check`, `make data-test`).
 
-### Open: fitting pgvector + Ollama next to yiagent's Elasticsearch on 7.8 GiB
-Rough sizes: ES with a 2 GiB heap uses about 3 GiB resident; pgvector with 809 chunks is
-a few hundred MiB; Ollama with `qwen3-embedding:0.6b` about 1-1.5 GiB while loaded; a
-0.6B reranker about the same. All at once is near the limit with no swap, and an OOM kill
-mid-run is an infra failure.
+### Decided: memory next to yiagent's Elasticsearch (2026-10-16)
+Measured on the VM with both stacks up: ES 3.8 GiB resident, pgvector 26 MiB, 4.1 GiB
+available, no swap. Ollama with `qwen3-embedding:0.6b` (about 1-1.5 GiB loaded) fits in
+that, with little margin for a reranker.
 
-Options:
-1. **Stop ES while working here** (`docker compose down` in yiagent). Simple; blocks
-   working on both repos in the same hour.
-2. **Run both, ES heap at 1 GiB** (`YI_ES_HEAP=1g`). Probably fits; yiagent's frozen eval
-   numbers were made with 2 GiB, so don't run yiagent evals in this mode.
-3. **Embed once, cache to disk.** 809 chunks + 300 questions per embedding model take
-   minutes on CPU. Store vectors in a file keyed by (model, chunk sha256); Ollama runs
-   only while building an index, then exits (`keep_alive: 0`). pgvector then holds a
-   frozen collection, and eval runs need no Ollama at all.
-
-Recommendation: 3, plus 1 during index builds. It also makes every eval number point to
-an exact index build (the course's immutable-collection idea). Add a 2 GiB swap file as a
-safety net either way. Decide before S1's first index build.
+Decision (Yi accepted the recommendation when starting S1): **embed once, cache to
+disk**, keyed by (embedding model identity, text sha256); Ollama runs only while
+embedding (`keep_alive: 0`); plus a **2 GiB swap file** as a safety net, added before
+Ollama is installed (S1b). Caveat: the cache covers S1-S2 (300 fixed questions). In S4
+the agent writes its own queries, so something must embed them live: Ollama next to ES,
+or a hosted copy of the exact same model (a different model is a new collection and a new
+condition). Decide that at S4's start, with a measurement.
 
 ## S1 data + retrieval eval
 
-- Loaders for docs, `knowledge_chunks.jsonl`, `index_manifest.json`, the 300 blueprints,
-  with sha256 checks against the manifest; the split's hash pinned in a test.
-- Leakage test: nothing the agent can see contains `ground_truth`, `resolved_*`,
-  `canonical_answer`, evidence ids or anything from `audit/event_journal.jsonl`.
-- Chunk-id mapping: retrieved passage -> gold `evidence_id` by doc_id + section heading,
-  tested on the benchmark's own chunking and on the course's (title-only `c001`, split
-  long sections).
-- Metrics: recall@5 / recall@10 / MRR against gold doc evidence, overall and **per
-  question type**; only `doc:` evidence counts for retrieval (sql/runtime/negative are
-  tool evidence, scored in S3).
-- Baselines on dev: oracle (gold chunks; must score 1.0), null (random chunks), course
-  dense top-10 (qwen3-embedding:0.6b, 1000-char heading chunks), BM25.
+Split into S1a (no embeddings; done in code 2026-10-16, pending the VM check) and S1b
+(dense retrieval, needs Ollama on the VM).
 
-**Done when** the metric code passes its oracle/null checks in `make verify` and the dev
-table for dense vs BM25 vs oracle exists.
+### S1a: data, blinding, metrics, BM25
 
-### Open: BM25 via Postgres full-text or in-process with jieba
-- **Postgres full-text.** Postgres has no Chinese parser; the pgvector image has no
-  zhparser / pg_jieba. Workaround: segment with jieba in Python, store space-joined
-  tokens in a `tsvector` with the `simple` config. But `ts_rank` is not BM25 (no IDF, no
-  length saturation), so it is a different baseline from the one the literature means.
-  Gains: one store, SQL filters (doc_type, version, effective dates) in the same query.
-- **In-process.** About 60 lines of our own BM25 (k1, b tunable) over 809 chunks, built in
-  well under a second; exact BM25; tokenization fully under test. Metadata filters done in
-  Python before scoring.
+- Loaders: the release manifest (`data/releases/flowpay_dataset_v1/release_manifest.json`,
+  sha256 pinned to the value the course pins in `backend/configs/knowledge.toml`, so our
+  copy is the release the course's numbers were made on); every artifact it lists is
+  checked for size and sha256. `knowledge_chunks.jsonl` is checked against
+  `index_manifest.json`.
+- The benchmark's chunking is **rebuilt from the 100 docs** (front matter dropped; split
+  at `## ` lines; blank sections skipped; the title section is `c001`, the course's
+  `scripts/benchmark/evidence.py` rule) and cross-checked against
+  `knowledge_chunks.jsonl`: same ids, same headings. Chunk text comes from the docs, so
+  S2's chunking variants use the same code path.
+- **Mapping retrieved chunks to gold ids by character span, not by heading** (decided
+  2026-10-16): a chunk counts for a gold section when at least half of the chunk lies in
+  that section, or it covers at least half of the section. Headings can repeat inside a
+  doc, and windowed chunks can straddle sections; spans handle both. Tested on synthetic
+  docs with split and straddling chunks.
+- **Label blinding:** a retriever (later the agent) sees `Question(case_id, text)` only.
+  `case_id` is opaque (`q-` + sha256 of the question id), because question ids may encode
+  the type. Labels (type, split, gold evidence, ground truth) live in `Label`, read only
+  by graders. Leakage tests: the `Question` fields are a whitelist; no question text
+  contains a gold evidence id or its canonical answer; the index is built from
+  `data/knowledge/` only.
+- **Split hash:** sha256 over sorted `question_id<TAB>split` lines; printed by
+  `yfr data check`, pinned in `src/yifinance_rag/data/pins.py` once Yi sends it.
+- **Metrics** (`doc:` evidence only; sql / runtime / negative evidence is tool evidence,
+  scored in S3): recall@5, recall@10, complete@10 (all gold chunks in the top 10),
+  MRR@10, overall and per question type. Questions without doc evidence are counted
+  and excluded. Checks in `make verify`: oracle = 1.0, a wrong oracle (another question's
+  gold) = 0, a seeded random retriever at chance (k / N).
+- **BM25** (decided 2026-10-16: in-process, own implementation; Lucene's IDF,
+  k1 = 1.2, b = 0.75). Tokens: ASCII identifier runs first (`FP-4041`, `pay_bm_001`,
+  `2026-07-01`), kept whole and lowercased plus their parts; jieba on the rest (jieba
+  alone splits `FP-4041` into `FP`, `-`, `4041`). Indexed text = doc title + section.
+- `yfr retrieval --retriever bm25|oracle|random --split dev` writes
+  `evals/results/retrieval/<run>/summary.json` (with the release hash, split hash, chunk
+  set hash and git commit) and a Markdown table. `--split test` needs `--final`, which
+  only Yi passes.
 
-Recommendation: **in-process, own implementation**, with a jieba user dictionary for
-FlowPay tokens (error codes like `FP-4041`, ids like `pay_bm_001`; check first how jieba
-splits them, a test should pin it). Explaining BM25 from its formula is an interview
-question; "I called ts_rank" is not an answer. Postgres FTS can be added later as a
-variant if a deploy needs a single store.
+**Done when** `make data-test` passes on the VM (hashes, counts, chunk rebuild, leakage),
+the split hash is pinned, and the dev table for oracle / random / BM25 exists.
+
+### S1b: dense baselines
+
+- Swap file, Ollama, `qwen3-embedding:0.6b` with its digest checked against the course's
+  pinned revision (`ac6da0df...`), the course's query instruction for queries.
+- Embedding cache keyed by (model identity, text sha256); the identity check borrowed
+  from the course's `same_vector_space`.
+- Two dense rows: **the course's index** (its 712-chunk pgvector dump, restored and
+  queried as the course does, mapped to gold ids by span) and **dense over the
+  benchmark's 809 chunks** (separates "chunking" from "dense vs BM25").
+
+**Done when** the dev table has oracle, random, BM25, course dense and dense-809, per
+type, each pointing to an exact index build.
 
 ## S2 retrieval ablations (dev only)
 

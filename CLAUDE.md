@@ -52,8 +52,9 @@ the account's own records (SQLite tables + runtime logs). It is **measured, not 
 reference implementations as baselines.
 
 **Where the data comes from.** The FlowPay dataset belongs to 程序员Carl's 卡码网 course
-*KamaAgenticRAG* (code: github.com/youngyangyang04/KamaAgenticRAG, MIT, 3 commits,
-empty README). The dataset is distributed separately to course members:
+*KamaAgenticRAG* (code: github.com/youngyangyang04/KamaAgenticRAG, MIT; 4 commits and a
+full README as of 2026-10-16; its index has 712 chunks, the benchmark's has 809). The
+dataset is distributed separately to course members:
 `C:\Users\micha\Downloads\flowpay-dataset.zip` (15 MB zipped, 165 MB unpacked).
 
 **Why this, not the course itself.** Many 卡码 students will have the course repo on their
@@ -126,9 +127,10 @@ The benchmark:
 Gotchas:
 - **Gold chunk ids follow the benchmark's chunking.** The benchmark keeps a title-only
   first section as `c001`; the course's chunker skips it and also splits long sections.
-  If our chunking differs, map retrieved passages back to gold ids **by doc_id + section
-  heading** (the course does this in `scripts/benchmark/evidence.py`), or retrieval
-  metrics silently go wrong whenever chunking changes. Test the mapping.
+  If our chunking differs, map retrieved passages back to gold ids, or retrieval metrics
+  silently go wrong whenever chunking changes. The course maps by doc_id + heading
+  (`scripts/benchmark/evidence.py`); we map **by character span** (`EvidenceMap`,
+  decided 2026-10-16), since headings repeat inside docs and windows straddle sections.
 - **The corpus is small (809 chunks).** Dense top-10 may already find most gold chunks;
   gains from hybrid may show only in some question types. Report per type, either way.
 - Questions, docs and assertions are Chinese. `required_assertions` are free text, so
@@ -151,7 +153,16 @@ already reviewed as worth borrowing:
 - s2's shared tool budget + dedup across tools, with refusals returned to the model as
   observations, not errors.
 - `scripts/benchmark/`: the course's own scorer. Run it on our outputs too, so numbers
-  compare with the course's.
+  compare with the course's. Read it as a heuristic, not a judge (checked 2026-10-16):
+  an assertion is "supported" if >=50% of its character bigrams occur anywhere in the
+  answer (long answers score higher); a forbidden conclusion counts only as an exact
+  substring (rewordings pass); it reads all 300 `design/` blueprints with no dev/test
+  split ("课程不调参"); it does not check `required_tools` because its tool names differ.
+  So: report course stages only on our test split, run by Yi; add a "verbose null"
+  (top-10 chunks pasted as the answer, no LLM) to S3 and score it with both graders.
+- `core/llm/embedding` `same_vector_space`: search refuses to run if the query embedder's
+  identity (provider, model, revision digest, dimensions, options) differs from the
+  collection's. Borrow it: it ties every number to an exact index build.
 - Course model config: chat `deepseek-v4-flash` (OpenAI-compatible), embeddings
   `qwen3-embedding:0.6b` via Ollama.
 If any code is copied, keep the MIT notice and record it in `VENDORED.md`.
@@ -167,7 +178,8 @@ If any code is copied, keep the MIT notice and record it in `VENDORED.md`.
 - Add an OpenAI-compatible provider (DeepSeek / Qwen) next to the Anthropic one: needed
   to run the course baselines on the same model, and Chinese models read well in China.
 - Postgres + pgvector for vectors (the course's image `pgvector/pgvector:0.8.2-pg17`);
-  BM25 via Postgres full-text or a small in-process index with jieba (decide in S1).
+  BM25 in-process, our own implementation, jieba plus an identifier pre-pass (2026-10-16).
+- Embeddings computed once and cached; a 2 GiB swap file on the VM (2026-10-16; ROADMAP S0).
 - Retrieval eval before the agent; graders before the agent (yiagent's S2-before-S3 order).
 
 ## Proposed stages (refine in `docs/ROADMAP.md`; record decisions there)
@@ -188,6 +200,21 @@ If any code is copied, keep the MIT notice and record it in `VENDORED.md`.
   `disputed()`, budgets). Course s1-s4 run as baselines on the same model.
 - **S5 test once + deploy:** final numbers on the 240 test questions, run once; a small
   deployed demo; README with the results table and cost per question.
+
+## Commands
+
+```bash
+make sync / make verify  # install; ruff + mypy --strict + pytest (synthetic data only)
+make pg-up / pg-down     # pgvector on 127.0.0.1:5432
+make data-check          # real dataset: hashes, counts, chunk rebuild, split, leakage
+make data-test           # the same as pytest assertions (marker `dataset`, VM only)
+uv run yfr retrieval --retriever bm25|random|oracle|wrong-oracle [--split dev]
+```
+
+Layout: `src/yifinance_rag/data/` (dataset files and hashes, corpus + `EvidenceMap`,
+benchmark `Question` vs `Label`, pins, `check_dataset`), `src/yifinance_rag/retrieval/`
+(tokenizer, BM25, retrievers, metrics), `src/yifinance_rag/cli.py` (`yfr`),
+`tests/synthetic.py` (a tiny dataset in the real layout, for `make verify`).
 
 ## Invariants (keep these true)
 - **No ground truth reaches the agent**: not `ground_truth`, `resolved_*`,
@@ -225,19 +252,26 @@ only, so these rules stay:
   installed) and Yi's DigitalOcean VM (Ubuntu 24.04, 4 vCPU, 7.8 GiB RAM, no swap;
   yiagent's Elasticsearch lives there). **Yi tests and runs everything on the VM
   (2026-10-16)**; the laptop is for editing. Give VM commands, and ask Yi to send back the
-  output. How pgvector + Ollama fit next to ES is open in docs/ROADMAP.md (S0).
+  output. Memory next to yiagent's ES: docs/ROADMAP.md S0 (measured and decided).
 - Git (decided 2026-10-16): **one long-lived working branch, `claude/yifinancerag`**,
-  merged into `main` at stage ends, as in kama and yiagent. Commit there; ask Yi before
-  pushing.
+  merged into `main` at stage ends, as in kama and yiagent. Commit there, and **push when
+  each task Yi assigned is finished; don't ask first** (Yi, 2026-10-16). `make verify`
+  passes before every push.
+- Claude's cloud container has no dataset (course material stays on the VM). Code is
+  written against the formats read from the course code and checked on the VM by
+  `make data-check` / `make data-test`; Yi sends back their output.
 - Security: a file in `Desktop/learn-claude-code/` is named with an Anthropic API key;
   Yi was told to revoke it. Never put keys in file names, traces or commits.
 
 ## Status (2026-10-16)
-**S0 scaffold built**, on `claude/yifinancerag`: uv + Python 3.12, `make verify` (ruff,
-mypy --strict over src and tests, pytest: 61 tests), pgvector compose on 127.0.0.1, config
-loader with a checked `FLOWPAY_DATASET_ROOT`, yiagent's domain-free layers vendored at
-`3502431` (VENDORED.md). `make verify` passed in a Windows check run with Python 3.12.15;
-**Yi's first run on the VM is still to come** (README "Setup").
+**S0 done** (closed on the VM 2026-10-16): `make verify` 61 passed, `make pg-up` healthy,
+dataset unpacked at `~/flowpay-dataset`. RAM measured with yiagent's ES running: ES
+3.8 GiB, pgvector 26 MiB, 4.1 GiB available, no swap. S0/S1 open questions decided
+(docs/ROADMAP.md): embed once and cache, plus a 2 GiB swap file; BM25 in-process with jieba.
 
-**Next:** decide S0's open question (RAM on the VM) and S1's (BM25 in Postgres vs
-in-process with jieba), both with recommendations in docs/ROADMAP.md; then S1.
+**Current: S1 part 1 (S1a)** built: dataset loaders with hash checks, label blinding
+(opaque case ids), leakage tests, the benchmark's chunking rebuilt and cross-checked,
+span-based mapping to gold ids, retrieval metrics with oracle / null / wrong checks, BM25
+(jieba + an identifier pre-pass), `yfr data check` and `yfr retrieval`.
+**Next:** Yi runs `make data-check` and `make data-test` on the VM; pin the split hash
+from that output; then the BM25 / oracle / random dev table; then S1b (dense).

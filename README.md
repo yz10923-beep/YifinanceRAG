@@ -17,4 +17,14 @@ mkdir -p ~/.yfr && cp .env.example ~/.yfr/.env    # then fill in ANTHROPIC_API_K
 make sync
 make verify
 make pg-up                                        # pgvector on 127.0.0.1:5432
+make data-check                                   # verify the dataset: hashes, counts, leakage
 ```
+
+## Retrieval eval (S1, no LLM, no cost)
+
+```bash
+uv run yfr retrieval --retriever bm25            # dev split; also random, oracle, wrong-oracle
+```
+
+Each run writes `evals/results/retrieval/<run>/summary.json` (metrics per question type,
+plus the release, split and chunk-set hashes and the git commit) and `table.md`.

@@ -9,9 +9,13 @@ description = "A measured RAG + agent support assistant for the FlowPay payments
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "anthropic>=0.60",
+    "jieba>=0.42.1",
     "pydantic>=2.7",
     "python-dotenv>=1.0",
 ]
+
+[project.scripts]
+yfr = "yifinance_rag.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/yifinance_rag"]
@@ -42,13 +46,22 @@ strict = true
 mypy_path = "src"
 explicit_package_bases = true
 
+[[tool.mypy.overrides]]
+module = ["jieba", "jieba.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "-m 'not live and not pg'"
+addopts = "-m 'not live and not pg and not dataset'"
 timeout = 60  # a hang in async code becomes a failure with a traceback
 markers = [
     "live: calls the real LLM API (costs money); run with `make live`",
     "pg: needs the running pgvector from docker-compose.yml (YFR_PG_URL); run with `make pg-test`",
+    "dataset: needs the real FlowPay dataset (FLOWPAY_DATASET_ROOT); run with `make data-test`",
+]
+filterwarnings = [
+    # jieba 0.42.1 has non-raw regex strings; harmless, raised when its .pyc is first built
+    "ignore:invalid escape sequence:SyntaxWarning",
 ]

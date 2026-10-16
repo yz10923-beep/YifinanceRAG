@@ -1,4 +1,4 @@
-.PHONY: sync lint type test verify live pg-up pg-down pg-test
+.PHONY: sync lint type test verify live pg-up pg-down pg-test data-check data-test
 
 sync:
 	uv sync
@@ -27,3 +27,10 @@ pg-down:
 
 pg-test:
 	uv run pytest -m pg -v
+
+# The real dataset (FLOWPAY_DATASET_ROOT, on the VM): hashes, counts, chunk rebuild, leakage
+data-check:
+	uv run yfr data check
+
+data-test:
+	uv run pytest -m dataset -v
