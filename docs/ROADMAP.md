@@ -411,7 +411,7 @@ goes to stderr, and the Ollama request timeout is 600 s. Tested (`make verify` 1
 **Done when** every grader passes its oracle/null/wrong checks and the judge's agreement
 with Yi's labels is reported.
 
-**Order for S3 (step 1 done 2026-10-17; the rest updated by its findings, below):**
+**Order for S3 (steps 1-4 done 2026-10-17; see below):**
 1. ~~Read before writing graders~~: done, see "S3 step 1" below.
 2. An answer record format (answer text, cited evidence ids, tool calls with their
    observed evidence ids, clarification turns) that the graders read and the S4 agent
@@ -545,6 +545,71 @@ Interview line: "The reference scorer passes a rule-only answer on every one of 
 questions that require looking up the account, and passes pasted source text on 29% of
 all questions with no model at all. So I graded instance facts deterministically and
 used the LLM judge only for the free-text assertions, calibrated against my own labels."
+
+### S3 steps 2-4 (2026-10-17): records, deterministic graders, no-LLM baselines
+
+Built (`src/yifinance_rag/grade/`, `yfr grade`), all without money:
+- **Answer record** (`record.py`): `answer` and `cited` are the system's output;
+  `tool_calls` (tool, operation, args, the evidence ids each call returned, result count,
+  error) and `clarifications` (question, categories disclosed) are written by the harness
+  that ran the tools and the simulated user, never parsed from model text. One format for
+  the baselines, the one-call RAG baseline and the S4 agent.
+- **Truth** (`truth.py`): the grader-only view, with the selectors from
+  `evidence_resolution.jsonl`; loading fails if a gold id is neither a doc chunk nor a
+  selector's id (0 such on the real data).
+- **Graders** (`graders.py`), each a score in [0, 1] or "doesn't apply":
+  `doc_evidence`, `record_evidence` (per selector; `at_least_one` = any of its ids),
+  `negative_found` (same tool and operation, same identifying parameters, success, zero
+  rows), `id_recall` (per id, for reference), `tools` (search sources by corpus folder,
+  so one `search_documents` and per-type tools score alike), `operations`,
+  `instance_facts` (atoms of the trajectory assertions stated in the answer: `facts.py`),
+  `as_of` (share of data calls scoped to the case's UTC date; unscoped = reading current
+  state), `clarification` (dynamic: required categories disclosed; single-turn: 1 if it
+  did not ask), `cited_grounded`, `cited_gold`.
+- **Course scorer** (`course.py`): its rules on our records, flaws kept (VENDORED.md).
+- **Baselines** (`baselines.py`): oracle, null, wrong (next case from another family,
+  same mode, same split), rule-only, verbose-null (top 10 chunks of any retriever pasted).
+- **Selftest** (`yfr grade --selftest`; in `make verify` on synthetic data and in
+  `make data-test` on all 300 real questions): oracle 1.0 on every grader on every case;
+  null 0 on every evidence grader, instance facts and the course task; the wrong answer's
+  mean under 0.5 on record evidence, negatives, instance facts and the course task;
+  rule-only never complete on instance facts and under 0.5 on average. A test checks
+  the selftest catches a grader that can't tell wrong from right.
+
+Decided while building (2026-10-17):
+- `tools`, `operations`, `clarification` and `as_of` score **behaviour**, not
+  correctness: a wrong answer that took a plausible route scores high on them (dev:
+  tools 0.75, clarification 0.98 on dynamic questions), so the selftest does not ask a
+  wrong answer to fail them. Correctness is the evidence graders, instance facts and
+  (step 5) the judge.
+- `doc_evidence` is not in the wrong-answer check either: families reuse documents, so
+  another family's chunks are sometimes this case's gold (0.015 dev, 0.08 on all 300).
+- Instance-fact atoms were designed on the label text of all 300 questions (no system
+  output involved): ids, error codes, dates and times normalized, amounts of 2+ digits,
+  enum words minus template words (`utc post get http id api usd scenario`), the
+  resolver's `as_of=` and operation names dropped. On all 180 dynamic questions: oracle
+  1.000, rule-only 0.110, another family's oracle 0.152 (max 0.667), null 0. Two of the
+  535 trajectory assertions have no atoms and are skipped.
+
+Dev table (`evals/records/grade/s3_dev_baselines.md`; all 60 dev questions):
+
+| system | doc_evidence | record_evidence | instance_facts | course_task |
+|---|---:|---:|---:|---:|
+| oracle | 1.000 | 1.000 | 1.000 | 1.000 |
+| null | 0 | 0 | 0 | 0 |
+| wrong (other family) | 0.015 | 0 | 0.224 | 0 |
+| rule-only | 1.000 | 0 | 0.119 | **1.000** |
+| verbose-null (BM25 top 10, no LLM) | 0.456 | 0 | 0.173 | **0.433** |
+
+verbose-null's `doc_evidence` equals S1's BM25 recall@10 on dev (0.456), a cross-check
+that records and the retrieval eval agree. On all 300 questions verbose-null passes the
+course's task check on 53% (single-turn 82%) with no model at all.
+
+Interview line, extended: "Pasting the top 10 BM25 chunks with no model passes the
+reference scorer's task check on 53% of questions; my instance-fact grader gives it 0.17."
+
+Next: step 5 (the judge) and step 6 (the DeepSeek provider, the one-call baseline, Yi's
+labels). The judge is the only grader of the free-text required / negative assertions.
 
 ## S4 agent
 

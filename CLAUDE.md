@@ -239,14 +239,19 @@ uv run yfr retrieval --retriever course-dense|dense-809|hybrid   # need Ollama (
     [--embed-model qwen3-embedding:4b]   # dense-809 / hybrid only; Qwen3 family only
 uv run yfr retrieval --retriever hybrid --embed-model qwen3-embedding:4b --rerank haiku \
     [--trial 1]   # the S4 config; paid (~$0.03 a dev run), replies cached; --trial asks again
+uv run yfr grade --selftest      # every grader vs the no-LLM baselines (S3)
+uv run yfr grade --system oracle|null|wrong|rule-only|verbose-null [retrieval flags]
+uv run yfr grade --records FILE --name NAME   # grade a system's answer records
 ```
 
 Layout: `src/yifinance_rag/data/` (dataset files and hashes, corpus + `EvidenceMap`,
 benchmark `Question` vs `Label`, pins, `check_dataset`), `src/yifinance_rag/retrieval/`
-(tokenizer, BM25, retrievers, metrics, `dense.py`), `src/yifinance_rag/embed/` (Ollama
+(tokenizer, BM25, retrievers, metrics, `dense.py`), `src/yifinance_rag/grade/` (answer
+record, grader-side `Truth`, deterministic graders, instance-fact atoms, the course scorer
+port, no-LLM baselines, selftest), `src/yifinance_rag/embed/` (Ollama
 client pinned to the course's model digest, SQLite embedding cache),
 `src/yifinance_rag/cli.py` (`yfr`), `tests/synthetic.py` (a tiny dataset in the real
-layout) and `tests/fake_ollama.py` (a local HTTP stand-in), both for `make verify`.
+layout; `graded=True` writes a second question set with selectors and trajectories) and `tests/fake_ollama.py` (a local HTTP stand-in), both for `make verify`.
 
 ## Invariants (keep these true)
 - **No ground truth reaches the agent**: not `ground_truth`, `resolved_*`,
@@ -355,18 +360,24 @@ every label field, the simulated user, the SQLite schema and the course scorer; 
 with numbers and the grader design they lead to are in ROADMAP "S3 step 1". Yi decided
 the models: chat `deepseek-v4-flash`, judge Haiku 5.5 or Sonnet 5.5.
 
-## Next session: start here (S3 step 2, the answer record format)
-1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3": the order, the model
-   decisions and "S3 step 1" (11 findings). Graders before the agent, as in yiagent.
+**S3 steps 2-4 done** (2026-10-17, container, on the uploaded zip): answer record format,
+deterministic graders (evidence per selector incl. negatives, sources, operations,
+instance facts, `as_of`, clarification, citations), the course scorer port, and the
+oracle / null / wrong / rule-only / verbose-null baselines; `yfr grade`. Selftest passes
+in `make verify` (128 passed) and on all 300 real questions (`make data-test` 4 passed).
+Dev: rule-only passes the course task 1.000 but instance facts 0.119; verbose-null (BM25
+top 10 pasted, no LLM) passes the course task 0.433 (53% on all 300), instance facts 0.173
+(table: ROADMAP "S3 steps 2-4", `evals/records/grade/`).
+
+## Next session: start here (S3 step 5, the judge, and step 6)
+1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3" (order, model
+   decisions, step 1 findings, steps 2-4). Graders before the agent, as in yiagent.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo).
-   Otherwise build against `tests/synthetic.py`, extended to carry assertions,
-   trajectory assertions, selectors and observed evidence ids.
-3. Next deliverable (steps 2-4, no money): the answer record format + deterministic
-   graders (evidence per selector incl. negatives, source/operation coverage, instance
-   facts, the `as_of` shortcut, clarification accounting) with oracle / null / wrong
-   (other family) / rule-only / verbose null baselines inside `make verify`.
-4. Then the OpenAI-compatible provider for `deepseek-v4-flash` and the judge; Yi runs the
-   paid one-call baseline and labels ~50 dev answers for calibration.
+3. Step 5: the LLM judge for required / negative assertions (Haiku 5.5 and Sonnet 5.5;
+   one call per answer, per-assertion JSON verdicts, cached replies, trials), with its
+   own oracle / null / wrong checks on the baselines' records; costs money, so Yi runs it.
+4. Step 6: the OpenAI-compatible provider for `deepseek-v4-flash`, then the one-call RAG
+   baseline writing answer records (Yi runs it), ~50 dev answers Yi labels, agreement.
 5. S3 is a gate, not a step to compress: no S4 agent variant is compared before its
    graders pass their oracle / null / wrong checks, or S4's A/Bs (tool shape,
    `disputed()`, budgets, ask-user) would be chosen by reading outputs. The time box

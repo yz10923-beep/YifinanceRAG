@@ -31,3 +31,13 @@ changes beyond that.
 
 The span format is kept identical on purpose: `trace/analyze.py` reads traces from kama,
 yiagent or this repo.
+
+## Reimplemented from the course (not copied)
+
+`src/yifinance_rag/grade/course.py` reimplements the scoring rules of KamaAgenticRAG's
+`scripts/benchmark/run.py` (`supported`, `violated`, `score`) and `evidence.py`
+(`IDENTIFIER`, `expected_ids`, `coverage`) (github.com/youngyangyang04/KamaAgenticRAG,
+MIT, Copyright (c) 2026 程序员Carl; repo at `fdeda6b`, read 2026-10-17) on this repo's answer
+records, so results compare with the course's. The rules and the id pattern are kept
+as they are; the one change is that doc evidence is read from our records' gold chunk ids
+instead of the course's heading alignment.
