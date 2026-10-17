@@ -1,0 +1,105 @@
+{
+  "retriever": "bm25",
+  "config": {
+    "k1": 1.2,
+    "b": 0.75,
+    "tokenizer": "ident+jieba"
+  },
+  "split": "dev",
+  "query": "opener",
+  "cases": 60,
+  "cases_without_doc_evidence": 0,
+  "rows": [
+    {
+      "type": "simple_retrieval",
+      "n": 14,
+      "recall@5": 0.35714285714285715,
+      "recall@10": 0.7142857142857143,
+      "recall@20": 0.7857142857142857,
+      "complete@10": 0.7142857142857143,
+      "mrr@10": 0.21408730158730158
+    },
+    {
+      "type": "multi_document",
+      "n": 10,
+      "recall@5": 0.4,
+      "recall@10": 0.6,
+      "recall@20": 0.8,
+      "complete@10": 0.4,
+      "mrr@10": 0.5101190476190476
+    },
+    {
+      "type": "multi_hop",
+      "n": 12,
+      "recall@5": 0.20833333333333334,
+      "recall@10": 0.2916666666666667,
+      "recall@20": 0.375,
+      "complete@10": 0.08333333333333333,
+      "mrr@10": 0.20912698412698413
+    },
+    {
+      "type": "temporal_versioned",
+      "n": 5,
+      "recall@5": 0.2333333333333333,
+      "recall@10": 0.4,
+      "recall@20": 0.4,
+      "complete@10": 0.2,
+      "mrr@10": 0.19166666666666665
+    },
+    {
+      "type": "multi_source",
+      "n": 14,
+      "recall@5": 0.29166666666666663,
+      "recall@10": 0.34523809523809523,
+      "recall@20": 0.4523809523809524,
+      "complete@10": 0.14285714285714285,
+      "mrr@10": 0.33035714285714285
+    },
+    {
+      "type": "tool_use_diagnostic",
+      "n": 5,
+      "recall@5": 0.13333333333333333,
+      "recall@10": 0.2,
+      "recall@20": 0.26666666666666666,
+      "complete@10": 0.2,
+      "mrr@10": 0.2
+    },
+    {
+      "type": "mode=progressive",
+      "n": 36,
+      "recall@5": 0.23379629629629628,
+      "recall@10": 0.3148148148148148,
+      "recall@20": 0.3935185185185185,
+      "complete@10": 0.1388888888888889,
+      "mrr@10": 0.25257936507936507
+    },
+    {
+      "type": "mode=single",
+      "n": 24,
+      "recall@5": 0.375,
+      "recall@10": 0.6666666666666666,
+      "recall@20": 0.7916666666666666,
+      "complete@10": 0.5833333333333334,
+      "mrr@10": 0.3374338624338624
+    },
+    {
+      "type": "all",
+      "n": 60,
+      "recall@5": 0.2902777777777778,
+      "recall@10": 0.45555555555555555,
+      "recall@20": 0.5527777777777777,
+      "complete@10": 0.31666666666666665,
+      "mrr@10": 0.286521164021164
+    }
+  ],
+  "release_manifest_sha256": "2e50d09e8898ce0aa4eb3f02698ac0ef76484f9e9c90c4ffac318d12d3e77a5f",
+  "split_sha256": "152d6325581bf5859919b1bb0da912fb6e8df555795105406610d48325c9f3d6",
+  "chunk_set_sha256": "16da2198534c1a42e2f50fd3319a5dfd0249243a8a502676362c0c619fd43a93",
+  "index_chunk_set_sha256": "16da2198534c1a42e2f50fd3319a5dfd0249243a8a502676362c0c619fd43a93",
+  "index_chunks": 809,
+  "depth": 20,
+  "recall_ceiling": 1.0,
+  "embeddings_computed": null,
+  "git_commit": "d153ab15e3154671a97c6d445e7830c9c0ee40c3",
+  "created": "20261017T054042Z"
+}

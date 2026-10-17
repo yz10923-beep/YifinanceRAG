@@ -322,5 +322,6 @@ concurrent runs and reports progress; request timeout 600 s. `make verify` 102 p
 simulated-user fact to the 36 dev openers: BM25 recall@10 0.315 to 0.462 (+0.147, p
 0.008), as large as hybrid's gain, so S4's ask-user loop is the next big lever. Tables
 and comparisons now have per-mode rows. `make verify` 104 passed.
-**Next:** the 4B rows (VM, running); then one reranker condition over hybrid's top 20
-(proposed: Claude Haiku 5.5, Yi decides); then close S2 and start S3 (ROADMAP S2).
+Runs now report recall@20 (a reranker's ceiling): BM25 0.553 vs 0.456 at 10.
+**Next:** hybrid's recall@20 and the 4B rows (VM); a reranker only if hybrid has headroom
+between recall@10 and recall@20 (Yi chooses which); then close S2 and start S3.

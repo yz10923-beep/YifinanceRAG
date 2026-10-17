@@ -290,7 +290,11 @@ tables in `evals/records/retrieval/`, `s2_user_facts_upper_bound.md`):
 Recommended rest of S2 (time box: about 2 more days, then S3):
 1. Finish the 4B rows (running on the VM).
 2. One reranker condition over the hybrid top 20, for MRR (the metric hybrid did not
-   move). Proposed: an LLM reranker with Claude Haiku 5.5 through the vendored provider
+   move), **only if there is headroom**: a reranker can only reorder what the first stage
+   found, so its ceiling is hybrid's recall@20 (runs now report recall@20; complete@ and
+   MRR stay at 10). BM25 alone: recall@10 0.456, recall@20 0.553 (container, 2026-10-17).
+   Decision rule: if hybrid recall@20 is barely above its recall@10 (0.549), skip the
+   reranker and start S3. Proposed: an LLM reranker with Claude Haiku 5.5 through the vendored provider
    (about $0.04 per dev run at $0.10/MTok input; Yi runs it); an open reranker needs
    torch on the VM's CPU.
 3. Skip metadata filters and chunking variants for now: temporal_versioned has 5 dev
