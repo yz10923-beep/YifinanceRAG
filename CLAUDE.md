@@ -385,7 +385,9 @@ before the first run (ROADMAP "S3 step 5"). `make verify` 136 passed, `make data
 1.000, 0 incomplete, 0 unverified, $0.069; Sonnet: oracle 0.950, 9 incomplete, 18
 unverified quotes, $1.14. Verbose-null judge_task 0.367 / 0.308 vs course 0.567.
 Sonnet's misses were our checks (ASCII punctuation in quotes, a corrected second JSON):
-fixed (NFKC quotes, last JSON verdict); re-scoring from the cache is Yi's (free).
+fixed (NFKC quotes, last JSON verdict). **Re-scored on the VM (cached, $0): step 5
+closed.** Sonnet oracle 1.000, 0 incomplete, 0 unverified, same as Haiku on every check;
+verbose-null judge_task 0.367 / 0.350 vs course 0.567. The judge is chosen by Yi's labels.
 
 **S3 step 6 built** (2026-10-17, container): OpenAI-compatible provider (httpx2) with
 the course's chat config (`deepseek-v4-flash`, thinking disabled, 4096 tokens; price
@@ -396,8 +398,8 @@ sheets and agreement (`yfr label-sheet`, `yfr agree`). `make verify` 153 passed,
 ## Next session: start here (S3 step 6: Yi's runs and labels)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3", steps 5 and 6.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo).
-3. Record what Yi sends: the cached re-score of both judged selftests (step 5), the
-   one-call dev run (both judges' tables), and `yfr agree` output once labelled.
+3. Record what Yi sends: the one-call dev run (both judges' tables, a second Haiku
+   trial) and `yfr agree` output once labelled (step 5 is closed).
 4. Apply the judge decision rule (ROADMAP step 6), record the chosen judge, close S3
    (ROADMAP results, interview line, Status), then S4.
 5. S3 is a gate, not a step to compress: no S4 agent variant is compared before its

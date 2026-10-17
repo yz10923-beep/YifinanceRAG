@@ -675,6 +675,13 @@ calls. Sonnet 5.5: oracle 0.950 (misses only on progressive questions), forbidde
   **Fixed:** quotes compare after NFKC normalization; the verdict is the last JSON object
   in the reply that has a verdict section. Neither changes a prompt or a threshold, so
   both judges are re-scored from their cached replies at no cost.
+- **Re-scored on the VM (2026-10-17, cached, $0): step 5 closed.** Sonnet now: oracle
+  1.000, forbidden caught 60/60, 0 incomplete, 0 unverified (Haiku unchanged: identical
+  checks). On the baselines the two judges are indistinguishable; verbose-null judge_task
+  0.367 (Haiku) / 0.350 (Sonnet) vs the course scorer's 0.567. The choice between them
+  waits for Yi's labels on real answers (step 6). Lesson for the interview: two of the
+  "judge failures" were the harness's (Unicode punctuation, a self-corrected reply), found
+  by reading raw replies before blaming the model.
 
 ### S3 step 6 (2026-10-17): DeepSeek provider, one-call baseline, calibration tools
 
