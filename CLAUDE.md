@@ -367,7 +367,9 @@ oracle / null / wrong / rule-only / verbose-null baselines; `yfr grade`. Selftes
 in `make verify` (128 passed) and on all 300 real questions (`make data-test` 4 passed).
 Dev: rule-only passes the course task 1.000 but instance facts 0.119; verbose-null (BM25
 top 10 pasted, no LLM) passes the course task 0.433 (53% on all 300), instance facts 0.173
-(table: ROADMAP "S3 steps 2-4", `evals/records/grade/`).
+(table: ROADMAP "S3 steps 2-4", `evals/records/grade/`). **Confirmed on the VM**
+(2026-10-17): all tests pass, selftest tables identical; verbose-null with the S2 config
+(no chat model): course task 0.567 on dev, instance facts 0.255, doc evidence 0.714.
 
 ## Next session: start here (S3 step 5, the judge, and step 6)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3" (order, model

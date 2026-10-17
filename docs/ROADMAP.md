@@ -605,6 +605,14 @@ verbose-null's `doc_evidence` equals S1's BM25 recall@10 on dev (0.456), a cross
 that records and the retrieval eval agree. On all 300 questions verbose-null passes the
 course's task check on 53% (single-turn 82%) with no model at all.
 
+**Confirmed on the VM (2026-10-17):** `make verify` and `make data-test` pass,
+`yfr grade --selftest` ok with tables identical to the container's. verbose-null with the
+S2 config (hybrid-4b + Haiku rerank, replies cached), dev, all 60: doc_evidence 0.714
+(= S2's recall@10 0.714), instance_facts 0.255, **course_task 0.567** (single-turn 0.750,
+progressive 0.444; simple_retrieval 0.857). So with the S4 retrieval config and no chat
+model, the course scorer already passes 57% of dev; any LLM system must be read against
+that floor, and against the 0.255 on instance facts.
+
 Interview line, extended: "Pasting the top 10 BM25 chunks with no model passes the
 reference scorer's task check on 53% of questions; my instance-fact grader gives it 0.17."
 
