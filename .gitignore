@@ -21,3 +21,7 @@ flowpay-dataset/
 # Run outputs: traces and per-question events can quote documents and questions.
 evals/results/*/*/traces/
 evals/results/*/*/events/
+
+# Run outputs are machine-local (each machine writes its own); reported runs are committed
+# as copies under evals/records/.
+/evals/results/

@@ -276,6 +276,9 @@ only, so these rules stay:
   merged into `main` at stage ends, as in kama and yiagent. Commit there, and **push when
   each task Yi assigned is finished; don't ask first** (Yi, 2026-10-16). `make verify`
   passes before every push.
+- Run outputs (`evals/results/`) are machine-local and gitignored. The runs a report cites
+  are committed as copies under `evals/records/` (decided 2026-10-17, after committing
+  VM summaries at their original paths blocked Yi's `git pull`).
 - Data in Claude's cloud container: when Yi uploads the zip to a session, Claude unpacks
   it in its scratchpad (never in the repo) and runs `yfr data check`, `make data-test`
   and the no-cost retrieval runs itself. The VM stays the source of truth: anything that

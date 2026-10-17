@@ -101,7 +101,7 @@ data, and fixed:
 - Indexed docs are now checked against the release's own `visibility` labels
   (`agent_knowledge`, `agent_via_typed_tools`): a leakage rule from the dataset itself.
 
-Dev table (60 questions, all with doc evidence; runs under `evals/results/retrieval/`,
+Dev table (60 questions, all with doc evidence; runs under `evals/records/retrieval/`,
 commit `3a9e555`):
 
 | retriever | recall@5 | recall@10 | complete@10 | MRR@10 |
@@ -182,7 +182,7 @@ tool_use_diagnostic 0.200 / 0.167 / 0.167.
 
 **S1 closed (2026-10-16).** `make ollama-test` passed: our client reproduces the course's
 stored vectors, so the dense rows are the course's retrieval, not a broken setup. Paired
-(`yfr compare`, all tables in `evals/results/retrieval/s1_dev_paired.md`):
+(`yfr compare`, all tables in `evals/records/retrieval/s1_dev_paired.md`):
 
 | B vs A on dev (60) | recall@10 B-A [95% CI] | W/L/T | sign p | MRR@10 B-A [95% CI] |
 |---|---|---|---:|---|
