@@ -14,7 +14,7 @@ changes beyond that.
 | Here | yiagent | Changes |
 |---|---|---|
 | `src/yifinance_rag/llm/types.py` | `src/yi_agent/llm/types.py` | none |
-| `src/yifinance_rag/llm/anthropic_provider.py` | `src/yi_agent/llm/anthropic_provider.py` | S2 (2026-10-17): `prompt_cache` switch (default on, unchanged behaviour); off for one-shot prompts such as the reranker, where an unread cache write costs 1.25x input. An empty tool list is no longer sent as `tools: []` |
+| `src/yifinance_rag/llm/anthropic_provider.py` | `src/yi_agent/llm/anthropic_provider.py` | S2 (2026-10-17): `prompt_cache` switch (default on, unchanged behaviour); off for one-shot prompts such as the reranker, where an unread cache write costs 1.25x input. An empty tool list is no longer sent as `tools: []`. `aclose()` closes the HTTP client (the reranker runs many calls on one loop and closes it at the end) |
 | `src/yifinance_rag/llm/pricing.py` | `src/yi_agent/llm/pricing.py` | none (rates checked 2026-10-11 there) |
 | `src/yifinance_rag/llm/retry.py` | `src/yi_agent/llm/retry.py` | none |
 | `src/yifinance_rag/trace/span.py` | `src/yi_agent/trace/span.py` | none |

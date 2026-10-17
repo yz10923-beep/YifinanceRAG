@@ -179,7 +179,11 @@ def cmd_retrieval(
         retriever = reranker
 
     emap = EvidenceMap(chunks)
-    results, skipped = evaluate(retriever, picked, labels, emap, k=max(KS))
+    try:
+        results, skipped = evaluate(retriever, picked, labels, emap, k=max(KS))
+    finally:
+        if reranker:
+            reranker.close()
     rows = summarize(results)
     table = render_table(rows)
     index = getattr(retriever, "chunks", chunks)

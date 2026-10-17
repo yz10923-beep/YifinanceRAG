@@ -179,6 +179,10 @@ class AnthropicProvider:
     def model(self) -> str:
         return self._model
 
+    async def aclose(self) -> None:
+        """Close the HTTP client; call it on the event loop that used it."""
+        await self._client.close()
+
     @property
     def effort(self) -> str | None:
         """The effort actually sent (None if unset or unsupported by the model)."""

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -98,6 +99,42 @@ def test_retries_then_stops_on_errors(tmp_path: Path) -> None:
     bad = LLMError("bad request", retryable=False, kind="invalid_request")
     with pytest.raises(LLMError):
         make(ScriptedProvider([bad]), tmp_path / "other").search(Q, 1)
+
+
+class Closable(ScriptedProvider):
+    closed = 0
+
+    async def aclose(self) -> None:
+        self.closed += 1
+
+
+def test_one_client_and_one_loop_for_the_run_closed_at_the_end(tmp_path: Path) -> None:
+    provider = Closable([reply("[2, 1, 3, 4]"), reply("[1, 2, 3, 4]")])
+    made: list[ScriptedProvider] = []
+
+    def factory() -> LLMProvider:
+        made.append(provider)
+        return provider
+
+    r = LLMReranker(
+        Fixed(), factory, model="claude-haiku-5-5", effort="low", cache_path=tmp_path / "r.db"
+    )
+    r.search(Q, 2)
+    r.search(Question(case_id="q2", text="另一个问题"), 2)
+    assert len(made) == 1 and r.stats.calls == 2
+    r.close()
+    r.close()  # idempotent
+    assert provider.closed == 1
+
+
+async def _closes(p: AnthropicProvider) -> None:
+    await p.aclose()
+
+
+def test_the_provider_closes_its_client() -> None:
+    p = AnthropicProvider(model="claude-haiku-5-5", max_tokens=10, api_key="x")
+    asyncio.run(_closes(p))
+    assert p._client.is_closed()
 
 
 def test_one_shot_prompts_skip_the_prompt_cache() -> None:

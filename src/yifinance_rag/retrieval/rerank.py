@@ -10,6 +10,8 @@ stage found, so recall@N is unchanged by design; what it can move is MRR and rec
 - A reply that is not a usable ranking keeps the first-stage order for the numbers it
   leaves out, and the run counts such fallbacks. API errors that survive the retry
   policy stop the run (an infra failure, never a score).
+- One event loop and one API client for the whole run, closed by `close()`: a loop per
+  call left each client's connection pool to be closed after its loop was gone.
 """
 
 from __future__ import annotations
@@ -96,6 +98,8 @@ class LLMReranker:
         self.depth, self.max_chars, self.trial = depth, max_chars, trial
         self.retry = retry or RetryPolicy()
         self.stats = RerankStats()
+        self._loop = asyncio.new_event_loop()
+        self._provider: LLMProvider | None = None
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(cache_path, timeout=60)
         self.db.execute(
@@ -133,7 +137,7 @@ class LLMReranker:
         if row is not None:
             self.stats.cached += 1
             return str(row[0])
-        response = asyncio.run(self._call(prompt))
+        response = self._loop.run_until_complete(self._call(prompt))
         self.stats.calls += 1
         usage = response.usage
         self.stats.input_tokens += (
@@ -154,7 +158,9 @@ class LLMReranker:
         return text
 
     async def _call(self, prompt: str) -> LLMResponse:
-        provider = self.provider_factory()  # a fresh client per event loop
+        if self._provider is None:
+            self._provider = self.provider_factory()
+        provider = self._provider
         messages = [{"role": "user", "content": prompt}]
         retry, waited = 0, 0.0
         while True:
@@ -167,3 +173,14 @@ class LLMReranker:
                     raise
                 waited += delay
                 await asyncio.sleep(delay)
+
+    def close(self) -> None:
+        """Close the API client on the loop it ran on, then the loop and the cache."""
+        if self._loop.is_closed():
+            return
+        aclose = getattr(self._provider, "aclose", None)
+        if aclose is not None:
+            self._loop.run_until_complete(aclose())
+        self._provider = None
+        self._loop.close()
+        self.db.close()
