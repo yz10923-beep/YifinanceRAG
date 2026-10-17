@@ -226,6 +226,8 @@ uv run yfr compare RUN_A RUN_B   # paired: wins/losses/ties, sign test, bootstra
 uv run yfr retrieval --retriever bm25|random|oracle|wrong-oracle [--split dev]
 uv run yfr retrieval --retriever course-dense|dense-809|hybrid   # need Ollama (VM)
     [--embed-model qwen3-embedding:4b]   # dense-809 / hybrid only; Qwen3 family only
+uv run yfr retrieval --retriever hybrid --embed-model qwen3-embedding:4b --rerank haiku \
+    [--trial 1]   # the S4 config; paid (~$0.03 a dev run), replies cached; --trial asks again
 ```
 
 Layout: `src/yifinance_rag/data/` (dataset files and hashes, corpus + `EvidenceMap`,
@@ -286,7 +288,7 @@ only, so these rules stay:
 - Security: a file in `Desktop/learn-claude-code/` is named with an Anthropic API key;
   Yi was told to revoke it. Never put keys in file names, traces or commits.
 
-## Status (2026-10-16)
+## Status (2026-10-17)
 **S0 done** (closed on the VM 2026-10-16): `make verify` 61 passed, `make pg-up` healthy,
 dataset unpacked at `~/flowpay-dataset`. RAM measured with yiagent's ES running: ES
 3.8 GiB, pgvector 26 MiB, 4.1 GiB available, no swap. S0/S1 open questions decided
@@ -328,5 +330,31 @@ Runs now report recall@20 (a reranker's ceiling): BM25 0.553 vs 0.456 at 10.
 +0.079 / +0.061 over hybrid). Headroom between recall@10 and @20, so Yi chose a Claude
 Haiku 5.5 reranker: built (`--rerank haiku`, listwise top 20, cached replies, trials,
 cost in the summary). `make verify` 113 passed.
-**Next:** Yi runs hybrid-4b + rerank on dev (paid, about $0.1) and a second trial for
-noise; then choose the S4 retrieval config, close S2, start S3.
+**Reranker on dev (VM, 2026-10-17):** hybrid-4b + Haiku rerank recall@10 0.714 vs 0.604
+(+0.110, 15/2/43, p 0.002, CI [+0.054, +0.171]); MRR 0.449 vs 0.363, not distinguishable
+(and twice the trial-to-trial noise); recall@20 unchanged by design; $0.0286 a dev run
+($0.0005 a search). The first attempt's "Event loop is closed" tracebacks were client
+cleanup, not failed calls; fixed (one loop and one client per run). `make verify` 115.
+**S2 closed (2026-10-17).** S4 retrieval config: **hybrid-4b + Haiku 5.5 rerank of the
+top 20, keep the top 10** (ROADMAP "S2 closed" has the reasons, costs and the dev ladder:
+course-dense 0.293, BM25 0.456, hybrid 0.549, hybrid-4b 0.604, + rerank 0.714 recall@10).
+
+## Next session: start here (S3 answer graders, not started)
+1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S2 closed" and "S3", which
+   lists the proposed order. Graders before the agent, as in yiagent.
+2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo) and read
+   the benchmark spec in its `docs/` plus the `ground_truth` / `resolved_*` /
+   `forbidden_shortcuts` fields before writing a grader. Otherwise build against
+   `tests/synthetic.py`, extended to carry assertions and trajectories.
+3. First deliverable: an answer record format + deterministic graders (evidence ids,
+   trajectory / required tools, forbidden shortcuts) with oracle / null / wrong / verbose
+   null baselines inside `make verify`. No money needed for that part.
+4. Decisions for Yi before paid work: the judge model, and the one-call RAG baseline that
+   produces the ~50 dev answers Yi labels by hand for judge calibration.
+5. Keep the time box (about 3 weeks in all; S0-S2 took 2 days): S3 in a few days, then S4.
+- Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
+  run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,
+  `s2_rerank_dev_paired.md`, `s2_user_facts_upper_bound.md`). The two rerank runs'
+  `cases.jsonl` stay on the VM (`evals/results/retrieval/20261017T0722*_hybrid-4b+rerank_dev`).
+- Rerank replies and embeddings are cached on the VM in `~/.yfr/cache` (`rerank.sqlite`,
+  the embedding caches), so repeating an S2 run costs nothing.

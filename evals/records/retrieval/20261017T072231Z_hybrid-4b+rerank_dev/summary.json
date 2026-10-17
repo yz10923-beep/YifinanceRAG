@@ -1,0 +1,142 @@
+{
+  "retriever": "hybrid-4b+rerank",
+  "config": {
+    "base": {
+      "name": "hybrid-4b",
+      "rrf_k": 60,
+      "depth": 100,
+      "parts": [
+        {
+          "name": "bm25",
+          "k1": 1.2,
+          "b": 0.75,
+          "tokenizer": "ident+jieba"
+        },
+        {
+          "name": "dense-809-4b",
+          "chunks": "benchmark-809",
+          "text": "course-style",
+          "embedder": {
+            "endpoint": "openai-compatible /v1/embeddings",
+            "model": "qwen3-embedding:4b",
+            "revision": "df5bd2e3c74cd8d069d21dc038f1b359fcdc9458fce1c99bd43c9eb1518ff907",
+            "request_options": {}
+          }
+        }
+      ]
+    },
+    "reranker": {
+      "model": "claude-haiku-5-5",
+      "effort": "low",
+      "depth": 20,
+      "max_chars": 1000,
+      "trial": 0,
+      "system_sha256": "37e12a17fb76f996f9b10cb14f8c5543305c1038a413d858f033a61cec990675"
+    }
+  },
+  "split": "dev",
+  "query": "opener",
+  "cases": 60,
+  "cases_without_doc_evidence": 0,
+  "rows": [
+    {
+      "type": "simple_retrieval",
+      "n": 14,
+      "recall@5": 0.5,
+      "recall@10": 0.7857142857142857,
+      "recall@20": 0.7857142857142857,
+      "complete@10": 0.7857142857142857,
+      "mrr@10": 0.2698412698412698
+    },
+    {
+      "type": "multi_document",
+      "n": 10,
+      "recall@5": 0.65,
+      "recall@10": 0.75,
+      "recall@20": 0.8,
+      "complete@10": 0.6,
+      "mrr@10": 0.5133333333333334
+    },
+    {
+      "type": "multi_hop",
+      "n": 12,
+      "recall@5": 0.5,
+      "recall@10": 0.7083333333333334,
+      "recall@20": 0.75,
+      "complete@10": 0.4166666666666667,
+      "mrr@10": 0.5732473544973545
+    },
+    {
+      "type": "temporal_versioned",
+      "n": 5,
+      "recall@5": 0.49000000000000005,
+      "recall@10": 0.6633333333333333,
+      "recall@20": 0.73,
+      "complete@10": 0.4,
+      "mrr@10": 0.49000000000000005
+    },
+    {
+      "type": "multi_source",
+      "n": 14,
+      "recall@5": 0.4880952380952381,
+      "recall@10": 0.7023809523809524,
+      "recall@20": 0.755952380952381,
+      "complete@10": 0.5,
+      "mrr@10": 0.4488095238095238
+    },
+    {
+      "type": "tool_use_diagnostic",
+      "n": 5,
+      "recall@5": 0.25,
+      "recall@10": 0.5333333333333333,
+      "recall@20": 0.6833333333333333,
+      "complete@10": 0.2,
+      "mrr@10": 0.47857142857142854
+    },
+    {
+      "type": "mode=progressive",
+      "n": 36,
+      "recall@5": 0.4592592592592592,
+      "recall@10": 0.6754629629629629,
+      "recall@20": 0.7402777777777777,
+      "complete@10": 0.4166666666666667,
+      "mrr@10": 0.5001432980599647
+    },
+    {
+      "type": "mode=single",
+      "n": 24,
+      "recall@5": 0.5625,
+      "recall@10": 0.7708333333333334,
+      "recall@20": 0.7916666666666666,
+      "complete@10": 0.7083333333333334,
+      "mrr@10": 0.3712962962962963
+    },
+    {
+      "type": "all",
+      "n": 60,
+      "recall@5": 0.5005555555555555,
+      "recall@10": 0.7136111111111112,
+      "recall@20": 0.7608333333333334,
+      "complete@10": 0.5333333333333333,
+      "mrr@10": 0.44860449735449737
+    }
+  ],
+  "release_manifest_sha256": "2e50d09e8898ce0aa4eb3f02698ac0ef76484f9e9c90c4ffac318d12d3e77a5f",
+  "split_sha256": "152d6325581bf5859919b1bb0da912fb6e8df555795105406610d48325c9f3d6",
+  "chunk_set_sha256": "16da2198534c1a42e2f50fd3319a5dfd0249243a8a502676362c0c619fd43a93",
+  "index_chunk_set_sha256": "16da2198534c1a42e2f50fd3319a5dfd0249243a8a502676362c0c619fd43a93",
+  "index_chunks": 809,
+  "depth": 20,
+  "recall_ceiling": 1.0,
+  "embeddings_computed": 0,
+  "rerank": {
+    "calls": 14,
+    "cached": 46,
+    "fallbacks": 1,
+    "input_tokens": 45300,
+    "output_tokens": 5683,
+    "cost_usd": 0.0073715
+  },
+  "git_commit": "31259008ccc28b0bcc60f1a9369223bb378f0c29",
+  "created": "20261017T072231Z"
+}

@@ -317,7 +317,67 @@ asks again to measure run-to-run noise (Haiku 5.5 takes no fixed temperature). T
 and dollars go into the run summary. Condition: hybrid-4b + rerank vs hybrid-4b; recall@20
 cannot change by design, MRR and recall@5/10 can.
 
-Recommended rest of S2 (time box: about 2 more days, then S3):
+**Reranker result (VM, 2026-10-17, commit `3125900`;** runs and paired tables in
+`evals/records/retrieval/`, `s2_rerank_dev_paired.md`):
+
+| dev (60) | recall@5 | recall@10 | recall@20 | complete@10 | MRR@10 |
+|---|---:|---:|---:|---:|---:|
+| hybrid-4b | n/a | 0.604 | 0.761 | 0.433 | 0.363 |
+| **hybrid-4b + Haiku rerank, trial 0** | 0.501 | **0.714** | 0.761 | **0.533** | 0.449 |
+| hybrid-4b + Haiku rerank, trial 1 | 0.496 | 0.697 | 0.761 | 0.500 | 0.410 |
+
+- **recall@10 +0.110**, 15 wins / 2 losses / 43 ties, sign p 0.002, CI [+0.054, +0.171]:
+  the clearest gain in S2. The reranker pulls gold chunks from ranks 11-20 into the top 10.
+  Largest on multi_source (+0.196, 7/1/6) and on progressive openers (+0.127, CI
+  [+0.056, +0.204]).
+- **MRR@10 +0.085, not distinguishable** (30/22/8, CI [-0.032, +0.205]); trial 1 alone
+  gives +0.047. So it finds more gold but does not reliably put it first.
+- recall@20 unchanged in every row (0/0/60): the sanity check that it only reorders.
+- **Run-to-run noise (trial 1 vs trial 0, same prompts):** recall@10 -0.017 (0/2/58),
+  MRR -0.038 (7/13/40, CI [-0.084, +0.003]). The recall@10 gain is about 6x the noise;
+  the MRR gain is about 2x and its CI crosses 0. Report recall@10 for the reranker and
+  treat its MRR as noise-level.
+- **Cost:** one dev run (60 calls) $0.0286, 187K in / 20K out tokens: about $0.0005 a
+  search, about 3.1K input tokens a call. 1 unusable reply in 120 (kept first-stage order).
+- Worth a look later, not investigated: simple_retrieval has recall@10 0.786 but MRR
+  0.27, so its gold usually sits around rank 4 (perhaps several chunks state the same
+  rule and the benchmark marks one).
+- The first attempt printed "Event loop is closed" tracebacks: client cleanup after each
+  call, not failed calls (reproduced against a local server; the 46 replies it cached are
+  valid). Fixed in `3125900`: one loop and one client per run, closed at the end.
+
+### S2 closed (2026-10-17): the retrieval config for S4
+
+**Chosen: hybrid-4b (RRF k = 60 over BM25 + dense-809 with qwen3-embedding:4b, each
+part's top 100) + Claude Haiku 5.5 listwise rerank of the top 20 (effort low, 1,000
+characters a passage), keeping the top 10.** Dev recall@10 0.714 vs the course's
+dense-only 0.293 (same 60 questions, same gold); every step is a paired comparison in
+`evals/records/retrieval/`.
+
+The dev ladder, recall@10 / MRR@10: course-dense 0.293 / 0.222, dense-809 0.276 / 0.222,
+BM25 0.456 / 0.287, hybrid 0.549 / 0.302, hybrid-4b 0.604 / 0.363, **+ rerank 0.714 /
+0.449**. All on queries = the question openers; the agent will write its own queries.
+
+Why, and what it costs: the reranker's gain is the largest and clearest in S2, for about
+$0.0005 a search. Costs to keep in view in S4:
+- The 4B embedder must embed every live agent query (about 3 GB of RAM next to ES on the
+  VM). If that hurts, the fallback is a new condition to measure, not an assumption
+  (hybrid 0.6B + rerank was not run).
+- Rerank latency was not measured (one Haiku call a search); record it in S4's traces.
+- Not done, by decision: metadata filters and chunking variants (temporal_versioned has
+  5 dev questions, so no effect is measurable; S1 showed chunking moves nothing); a
+  second reranker model.
+
+The bigger lever left is not retrieval: on the 36 progressive openers, giving the
+question all the simulated user's facts added +0.147 recall@10 (BM25). S4's ask-user
+loop is where that is won.
+
+Interview line: "Dense-only retrieval, as in the reference course, found 29% of gold
+chunks in the top 10. BM25 with jieba found 46%, fusion 55%, a larger embedder 60%, and
+a $0.0005 Haiku reranker 71%, each step a paired test on the 60 dev
+questions with a noise run for the LLM step."
+
+Recommended rest of S2 (as planned before the reranker run; all done or decided above) (time box: about 2 more days, then S3):
 1. Finish the 4B rows (running on the VM).
 2. One reranker condition over the hybrid top 20, for MRR (the metric hybrid did not
    move), **only if there is headroom**: a reranker can only reorder what the first stage
@@ -349,6 +409,29 @@ goes to stderr, and the Ollama request timeout is 600 s. Tested (`make verify` 1
 
 **Done when** every grader passes its oracle/null/wrong checks and the judge's agreement
 with Yi's labels is reported.
+
+**Proposed order for S3 (not started; 2026-10-17):**
+1. Read before writing graders: the dataset's benchmark spec in `docs/` (Chinese),
+   `benchmark/resolved/resolved_blueprints.jsonl` fields (`ground_truth.required_assertions`,
+   `negative_assertions`, `canonical_answer`, `resolved_trajectory_assertions`,
+   `required_tools`, `forbidden_shortcuts`), and the course scorer
+   `scripts/benchmark/` (its weaknesses are listed in CLAUDE.md).
+2. An answer record format (answer text, cited evidence ids, tool calls) that the
+   graders read and the S4 agent will write; grader-only labels stay in `Label`.
+3. Deterministic graders first: evidence ids (doc / sql / runtime / negative) vs gold;
+   trajectory and required-tool checks (mapping our tool names to the benchmark's is a
+   decision to record); forbidden shortcuts that can be checked from the trajectory.
+4. Baselines with no LLM, inside `make verify` on synthetic data: oracle
+   (`canonical_answer` + gold ids), null (empty / "不知道"), wrong (another question's
+   oracle answer), and the "verbose null" (the S2 config's top-10 chunks pasted as the
+   answer), scored by our graders and the course scorer.
+5. The LLM judge for required / negative assertions (one call per answer, per-assertion
+   verdicts as JSON, replies cached like the reranker's). Open decision for Yi: the
+   judge model (Chinese text; ideally not the model family that writes the answers).
+6. Calibration needs real answers: a one-call RAG baseline (S2 config top 10 + one chat
+   call, no tools, no asking) answers the dev questions (paid, Yi runs it); Yi labels
+   about 50 of its answers by hand; report judge-vs-Yi agreement (per assertion, with
+   Cohen's kappa). The one-call baseline is also S4's bar, as in yiagent (0.93 there).
 
 ## S4 agent
 
