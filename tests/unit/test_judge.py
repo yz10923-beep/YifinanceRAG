@@ -79,6 +79,22 @@ def test_verdicts_need_a_real_quote(tmp_path: Path) -> None:
     assert v.scores()["judge_task"] == 0.0
 
 
+def test_quotes_may_use_ascii_punctuation_and_the_last_verdict_counts(tmp_path: Path) -> None:
+    t = _truth(tmp_path)
+    answer = "不会；应返回首次结果，两个 Request ID 指向同一 Payment。Starter 套餐不支持部分退款。"
+    first = _reply([("supported", "x"), ("not_supported", "")], [("not_asserted", "")])
+    final = _reply(
+        [
+            ("supported", "不会;应返回首次结果,两个 Request ID 指向同一 Payment。"),
+            ("not_supported", ""),
+        ],
+        [("not_asserted", "")],
+    )
+    # what Sonnet does: a verdict, second thoughts in prose, a corrected verdict
+    v = parse_verdicts(f"{first}\n\nWait, A1 needs a check.\n\n```json\n{final}\n```", t, answer)
+    assert v.complete and v.required == {"A1": True, "A2": False} and v.unverified == []
+
+
 def test_forbidden_claims_flag_the_task(tmp_path: Path) -> None:
     t = _truth(tmp_path)
     answer = ANSWER + "不过超过窗口仍可人工退款。"

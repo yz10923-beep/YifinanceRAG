@@ -667,6 +667,14 @@ calls. Sonnet 5.5: oracle 0.950 (misses only on progressive questions), forbidde
   (quotes that don't match the answer verbatim, replies the parser rejects). Diagnose
   from the cached replies (case rows now keep each raw reply), then decide by agreement
   with Yi's labels on real answers (step 6), as decided.
+- **Diagnosed (2026-10-17, from Sonnet's cached replies): both are our checks, not its
+  judgment.** (1) The 18 unverified quotes: Sonnet writes full-width punctuation as ASCII
+  (`；` as `;`, `，` as `,`), otherwise verbatim. (2) The 9 incomplete replies: Sonnet
+  writes a verdict, reconsiders in prose ("Wait…", "Correction…"), then writes a corrected
+  verdict; the parser took the span from the first `{` to the last `}`, which is not JSON.
+  **Fixed:** quotes compare after NFKC normalization; the verdict is the last JSON object
+  in the reply that has a verdict section. Neither changes a prompt or a threshold, so
+  both judges are re-scored from their cached replies at no cost.
 
 ## S4 agent
 

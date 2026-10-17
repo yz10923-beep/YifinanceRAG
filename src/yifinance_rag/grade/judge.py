@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -97,21 +98,32 @@ class Verdicts:
 
 
 def _squash(text: str) -> str:
-    return "".join(text.split())
+    """For quote checks: NFKC (full-width punctuation as ASCII, which Sonnet writes in its
+    quotes) and no whitespace."""
+    return "".join(unicodedata.normalize("NFKC", text).split())
+
+
+def final_object(text: str) -> dict[str, object] | None:
+    """The last JSON object in the reply that has a verdict section. Judges sometimes
+    write a verdict, reconsider in prose and write a corrected one; the last is final."""
+    decoder = json.JSONDecoder()
+    found: dict[str, object] | None = None
+    for m in re.finditer(r"\{", text):
+        try:
+            obj, _ = decoder.raw_decode(text, m.start())
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and ("required" in obj or "forbidden" in obj):
+            found = obj
+    return found
 
 
 def parse_verdicts(text: str, truth: Truth, answer: str) -> Verdicts:
     req_ids = [f"A{i}" for i in range(1, len(truth.required_assertions) + 1)]
     neg_ids = [f"N{i}" for i in range(1, len(truth.negative_assertions) + 1)]
     empty = Verdicts({i: None for i in req_ids}, {i: None for i in neg_ids}, parsed=False)
-    match = re.search(r"\{.*\}", text, flags=re.S)
-    if not match:
-        return empty
-    try:
-        raw = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return empty
-    if not isinstance(raw, dict):
+    raw = final_object(text)
+    if raw is None:
         return empty
     body = _squash(answer)
     out = Verdicts({i: None for i in req_ids}, {i: None for i in neg_ids})
