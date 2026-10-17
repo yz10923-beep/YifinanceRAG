@@ -318,4 +318,9 @@ sign p 0.036, CI just touches 0) and vs dense-809 0.276 (+0.273, CI excludes 0);
 distinguishable. Hybrid is the S2 baseline now. The first 4B run failed as an infra error
 (three concurrent runs on a CPU Ollama); the cache now commits per batch, locks against
 concurrent runs and reports progress; request timeout 600 s. `make verify` 102 passed.
-**Next:** Yi reruns dense-809-4b (one process), then hybrid-4b and the compares.
+**Asking the user, upper bound (container, 2026-10-17):** `--user-facts` adds every
+simulated-user fact to the 36 dev openers: BM25 recall@10 0.315 to 0.462 (+0.147, p
+0.008), as large as hybrid's gain, so S4's ask-user loop is the next big lever. Tables
+and comparisons now have per-mode rows. `make verify` 104 passed.
+**Next:** the 4B rows (VM, running); then one reranker condition over hybrid's top 20
+(proposed: Claude Haiku 5.5, Yi decides); then close S2 and start S3 (ROADMAP S2).

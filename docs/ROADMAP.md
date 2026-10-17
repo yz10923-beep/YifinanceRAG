@@ -268,6 +268,35 @@ Built (code, 2026-10-16; `make verify` 100 passed):
   simple_retrieval, where BM25 is already strong, loses a little (-0.07, 1/2/11).
 - Hybrid is now the S2 baseline to beat; each next variant is compared with it.
 
+**How much would asking the user help retrieval? (2026-10-17, container, BM25)**
+`--user-facts` appends every fact the simulated user would reveal to the 36 dev
+progressive-disclosure openers (an upper bound, grader-side, like the oracle; runs and
+tables in `evals/records/retrieval/`, `s2_user_facts_upper_bound.md`):
+
+| BM25, dev | recall@10 | MRR@10 | complete@10 |
+|---|---:|---:|---:|
+| openers only (36) | 0.315 | 0.253 | 0.139 |
+| openers + all user facts (36) | **0.462** | **0.412** | 0.083 |
+| single-turn questions (24, unchanged) | 0.667 | 0.337 | 0.583 |
+
+- recall@10 +0.147 on the openers, 15/3/18, sign p 0.008, CI [+0.052, +0.243]: perfect
+  clarification is worth about as much as hybrid search (+0.094 overall, +0.147 here).
+- complete@10 drops (0.139 to 0.083): the facts pull in the account- or record-specific
+  chunks and push out a second gold chunk; worth a look when the agent writes its queries.
+- What it means: the biggest remaining retrieval lever for 60% of the questions is the
+  agent asking for the missing facts (S4), not another retriever variant. That argues for
+  closing S2 soon. Upper bound only: a real agent asks for some facts, not all.
+
+Recommended rest of S2 (time box: about 2 more days, then S3):
+1. Finish the 4B rows (running on the VM).
+2. One reranker condition over the hybrid top 20, for MRR (the metric hybrid did not
+   move). Proposed: an LLM reranker with Claude Haiku 5.5 through the vendored provider
+   (about $0.04 per dev run at $0.10/MTok input; Yi runs it); an open reranker needs
+   torch on the VM's CPU.
+3. Skip metadata filters and chunking variants for now: temporal_versioned has 5 dev
+   questions (no measurable effect possible), and S1 showed chunking moves nothing.
+4. Choose the S4 retrieval config (hybrid, plus the reranker if it earns its cost).
+
 **4B run, first attempt (2026-10-17): no scores (infra failure, as designed).** Three
 runs hit Ollama at once (the background run was started twice and hybrid-4b began while
 both were embedding); a CPU Ollama serves one request at a time, so a batch waited past

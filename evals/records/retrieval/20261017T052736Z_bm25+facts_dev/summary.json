@@ -1,0 +1,95 @@
+{
+  "retriever": "bm25",
+  "config": {
+    "k1": 1.2,
+    "b": 0.75,
+    "tokenizer": "ident+jieba"
+  },
+  "split": "dev",
+  "query": "opener + all simulated-user facts (upper bound)",
+  "cases": 60,
+  "cases_without_doc_evidence": 0,
+  "rows": [
+    {
+      "type": "simple_retrieval",
+      "n": 14,
+      "recall@5": 0.35714285714285715,
+      "recall@10": 0.7142857142857143,
+      "complete@10": 0.7142857142857143,
+      "mrr@10": 0.21408730158730158
+    },
+    {
+      "type": "multi_document",
+      "n": 10,
+      "recall@5": 0.4,
+      "recall@10": 0.6,
+      "complete@10": 0.4,
+      "mrr@10": 0.5101190476190476
+    },
+    {
+      "type": "multi_hop",
+      "n": 12,
+      "recall@5": 0.25,
+      "recall@10": 0.375,
+      "complete@10": 0.0,
+      "mrr@10": 0.37936507936507935
+    },
+    {
+      "type": "temporal_versioned",
+      "n": 5,
+      "recall@5": 0.17333333333333334,
+      "recall@10": 0.39,
+      "complete@10": 0.0,
+      "mrr@10": 0.5119047619047619
+    },
+    {
+      "type": "multi_source",
+      "n": 14,
+      "recall@5": 0.4761904761904762,
+      "recall@10": 0.5654761904761905,
+      "complete@10": 0.21428571428571427,
+      "mrr@10": 0.4226190476190476
+    },
+    {
+      "type": "tool_use_diagnostic",
+      "n": 5,
+      "recall@5": 0.3,
+      "recall@10": 0.45,
+      "complete@10": 0.0,
+      "mrr@10": 0.3619047619047619
+    },
+    {
+      "type": "mode=progressive",
+      "n": 36,
+      "recall@5": 0.33425925925925926,
+      "recall@10": 0.4615740740740741,
+      "complete@10": 0.08333333333333333,
+      "mrr@10": 0.4121693121693122
+    },
+    {
+      "type": "mode=single",
+      "n": 24,
+      "recall@5": 0.375,
+      "recall@10": 0.6666666666666666,
+      "complete@10": 0.5833333333333334,
+      "mrr@10": 0.3374338624338624
+    },
+    {
+      "type": "all",
+      "n": 60,
+      "recall@5": 0.3505555555555555,
+      "recall@10": 0.5436111111111112,
+      "complete@10": 0.2833333333333333,
+      "mrr@10": 0.38227513227513227
+    }
+  ],
+  "release_manifest_sha256": "2e50d09e8898ce0aa4eb3f02698ac0ef76484f9e9c90c4ffac318d12d3e77a5f",
+  "split_sha256": "152d6325581bf5859919b1bb0da912fb6e8df555795105406610d48325c9f3d6",
+  "chunk_set_sha256": "16da2198534c1a42e2f50fd3319a5dfd0249243a8a502676362c0c619fd43a93",
+  "index_chunk_set_sha256": "16da2198534c1a42e2f50fd3319a5dfd0249243a8a502676362c0c619fd43a93",
+  "index_chunks": 809,
+  "recall_ceiling": 1.0,
+  "embeddings_computed": null,
+  "git_commit": "c0fb948792db085c2d105aac8e6448dd1eb3a63f",
+  "created": "20261017T052736Z"
+}
