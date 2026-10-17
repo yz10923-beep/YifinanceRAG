@@ -14,6 +14,8 @@ yfr grade --system oracle|null|wrong|rule-only|verbose-null
                                         grade a baseline; verbose-null takes the retrieval
                                         flags (default bm25)
 yfr grade --records FILE --name NAME    grade a system's answer records
+yfr grade ... --judge haiku|sonnet      add the LLM judge's verdicts (costs money); with
+                                        --selftest, the judge's own checks
 """
 
 from __future__ import annotations
@@ -56,11 +58,12 @@ from yifinance_rag.embed.ollama import (
 )
 from yifinance_rag.grade.baselines import SYSTEMS, build
 from yifinance_rag.grade.graders import Context
+from yifinance_rag.grade.judge import JUDGE_MODELS, Judge
 from yifinance_rag.grade.record import AnswerRecord, read_records, write_records
 from yifinance_rag.grade.report import Graded, grade_all, selftest
 from yifinance_rag.grade.report import render_table as render_grades
 from yifinance_rag.grade.report import summarize as summarize_grades
-from yifinance_rag.grade.truth import load_truths
+from yifinance_rag.grade.truth import Truth, load_truths
 from yifinance_rag.llm.anthropic_provider import AnthropicProvider
 from yifinance_rag.llm.types import LLMError, LLMProvider
 from yifinance_rag.retrieval.compare import compare, load_run, render
@@ -299,11 +302,56 @@ def _case_row(g: Graded) -> dict[str, object]:
         "scores": g.grade.scores,
         "details": g.grade.details,
         "course": g.course.__dict__,
+        "judge": g.verdicts.__dict__ if g.verdicts else None,
     }
 
 
+def default_judge(settings: Settings, args: argparse.Namespace) -> Judge:
+    model = JUDGE_MODELS[args.judge]
+    return Judge(
+        default_provider(settings, model),
+        model=model,
+        cache_path=cache_dir(settings) / "judge.sqlite",
+        trial=args.judge_trial,
+    )
+
+
+def _verbose_null(
+    args: argparse.Namespace,
+    settings: Settings,
+    chunks: Sequence[Chunk],
+    labels: Mapping[str, Label],
+    picked: Sequence[Question],
+    truths: Mapping[str, Truth],
+    ctx: Context,
+    embedder: Embedder | None,
+) -> tuple[list[AnswerRecord], str, dict[str, object], LLMReranker | None]:
+    retriever, reranker, _ = build_retriever(args, settings, chunks, labels, embedder)
+    try:
+        records = build(
+            "verbose-null", picked, truths, ctx, retriever=retriever, emap=EvidenceMap(chunks)
+        )
+    finally:
+        if reranker:
+            reranker.close()
+    return records, f"verbose-null-{retriever.name}", retriever.config(), reranker
+
+
+def _write_run(out: Path, summary: dict[str, object], graded: Sequence[Graded], table: str) -> None:
+    (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+    (out / "table.md").write_text(table + "\n")
+    write_records(out / "records.jsonl", [g.record for g in graded])
+    with (out / "cases.jsonl").open("w", encoding="utf-8") as f:
+        for g in graded:
+            f.write(json.dumps(_case_row(g), ensure_ascii=False) + "\n")
+
+
 def cmd_grade(
-    ds: Dataset, settings: Settings, args: argparse.Namespace, embedder: Embedder | None = None
+    ds: Dataset,
+    settings: Settings,
+    args: argparse.Namespace,
+    embedder: Embedder | None = None,
+    judge: Judge | None = None,
 ) -> int:
     if args.split == "test" and not args.final:
         print("the test split is for a stage's final report only; Yi passes --final")
@@ -314,86 +362,143 @@ def cmd_grade(
     truths = load_truths(ds, labels)
     ctx = Context.from_docs(docs)
     picked: list[Question] = select(questions, labels, args.split)
+    texts = {q.case_id: q.text for q in picked}
+    if args.judge != "none" and judge is None:
+        judge = default_judge(settings, args)
+    base = {
+        "split": args.split,
+        "release_manifest_sha256": sha256_file(ds.path(RELEASE_MANIFEST)),
+        "split_sha256": split_hash(labels.values()),
+        "git_commit": _git_commit(),
+    }
+    try:
+        if args.selftest:
+            return _grade_selftest(
+                args, settings, chunks, labels, picked, truths, ctx, texts, embedder, judge, base
+            )
+        reranker: LLMReranker | None = None
+        config: dict[str, object] = {}
+        records: list[AnswerRecord]
+        if args.records:
+            name = args.name or Path(args.records).stem
+            wanted = {q.case_id for q in picked}
+            records = [r for r in read_records(Path(args.records)) if r.case_id in wanted]
+            if missing := len(wanted) - len(records):
+                print(f"{missing} of {len(wanted)} {args.split} cases have no record; none graded")
+                return 1
+        elif args.system == "verbose-null":
+            try:
+                records, name, config, reranker = _verbose_null(
+                    args, settings, chunks, labels, picked, truths, ctx, embedder
+                )
+            except ValueError as e:
+                print(e)
+                return 2
+        elif args.system:
+            name = args.system
+            records = build(args.system, picked, truths, ctx)
+        else:
+            print("give --system, --records or --selftest")
+            return 2
 
-    if args.selftest:
-        by_system = {
-            s: grade_all(build(s, picked, truths, ctx), truths, ctx)
-            for s in SYSTEMS
-            if s != "verbose-null"
+        verdicts = judge.judge_all(records, truths, texts) if judge else None
+        graded = grade_all(records, truths, ctx, verdicts)
+        rows = summarize_grades(graded)
+        table = render_grades(rows)
+        out = _run_dir(Path(args.out), f"{name}_{args.split}")
+        summary = {
+            "system": name,
+            "config": config,
+            "cases": len(graded),
+            "rows": rows,
+            **base,
+            "rerank": reranker.stats.__dict__ if reranker else None,
+            "judge": {**judge.config(), **judge.stats.__dict__} if judge else None,
+            "created": out.name.split("_", 1)[0],
         }
-        for system, graded in by_system.items():
-            rows = [
-                r for r in summarize_grades(graded) if str(r["type"]).startswith(("mode", "all"))
-            ]
-            print(f"{system}\n{render_grades(rows)}\n")
-        problems = selftest(by_system)
-        for p in problems:
-            print(f"- {p}")
-        print(
-            f"selftest on {args.split}: "
-            + ("ok" if not problems else f"{len(problems)} problem(s)")
-        )
-        return 1 if problems else 0
+        _write_run(out, summary, graded, table)
+        print(f"{name} on {args.split}: {len(graded)} cases")
+        print(table)
+        if judge:
+            _print_judge(judge)
+        print(f"\nwritten to {out}")
+        return 0
+    finally:
+        if judge:
+            judge.close()
 
-    reranker: LLMReranker | None = None
-    config: dict[str, object] = {}
-    records: list[AnswerRecord]
-    if args.records:
-        name = args.name or Path(args.records).stem
-        wanted = {q.case_id for q in picked}
-        records = [r for r in read_records(Path(args.records)) if r.case_id in wanted]
-        if missing := len(wanted) - len(records):
-            print(f"{missing} of {len(wanted)} {args.split} cases have no record; none graded")
-            return 1
-    elif args.system == "verbose-null":
+
+def _print_judge(judge: Judge) -> None:
+    st = judge.stats
+    cost = "unknown" if st.cost_usd is None else f"${st.cost_usd:.4f}"
+    print(
+        f"judge {judge.model}: {st.calls} calls, {st.cached} cached, {st.unparsed} incomplete, "
+        f"{st.unverified} unverified quotes, {st.input_tokens} in / {st.output_tokens} out "
+        f"tokens, {cost}"
+    )
+
+
+def _grade_selftest(
+    args: argparse.Namespace,
+    settings: Settings,
+    chunks: Sequence[Chunk],
+    labels: Mapping[str, Label],
+    picked: Sequence[Question],
+    truths: Mapping[str, Truth],
+    ctx: Context,
+    texts: Mapping[str, str],
+    embedder: Embedder | None,
+    judge: Judge | None,
+    base: dict[str, object],
+) -> int:
+    """Without a judge: the deterministic graders on the label baselines (no cost). With
+    one: the same plus verbose-null, every record judged, the judge's thresholds checked,
+    and the run written out (it cost money)."""
+    records = {s: build(s, picked, truths, ctx) for s in SYSTEMS if s != "verbose-null"}
+    if judge:
         try:
-            retriever, reranker, embedder = build_retriever(
-                args, settings, chunks, labels, embedder
+            records["verbose-null"], _, _, _ = _verbose_null(
+                args, settings, chunks, labels, picked, truths, ctx, embedder
             )
         except ValueError as e:
             print(e)
             return 2
-        name, config = f"verbose-null-{retriever.name}", retriever.config()
-        try:
-            records = build(
-                "verbose-null", picked, truths, ctx, retriever=retriever, emap=EvidenceMap(chunks)
-            )
-        finally:
-            if reranker:
-                reranker.close()
-    elif args.system:
-        name = args.system
-        records = build(args.system, picked, truths, ctx)
-    else:
-        print("give --system, --records or --selftest")
-        return 2
-
-    graded = grade_all(records, truths, ctx)
-    rows = summarize_grades(graded)
-    table = render_grades(rows)
-    out = _run_dir(Path(args.out), f"{name}_{args.split}")
-    summary = {
-        "system": name,
-        "config": config,
-        "split": args.split,
-        "cases": len(graded),
-        "rows": rows,
-        "release_manifest_sha256": sha256_file(ds.path(RELEASE_MANIFEST)),
-        "split_sha256": split_hash(labels.values()),
-        "rerank": reranker.stats.__dict__ if reranker else None,
-        "git_commit": _git_commit(),
-        "created": out.name.split("_", 1)[0],
-    }
-    (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
-    (out / "table.md").write_text(table + "\n")
-    write_records(out / "records.jsonl", records)
-    with (out / "cases.jsonl").open("w", encoding="utf-8") as f:
-        for g in graded:
-            f.write(json.dumps(_case_row(g), ensure_ascii=False) + "\n")
-    print(f"{name} on {args.split}: {len(graded)} cases")
-    print(table)
-    print(f"\nwritten to {out}")
-    return 0
+    by_system: dict[str, list[Graded]] = {}
+    for system, recs in records.items():
+        verdicts = judge.judge_all(recs, truths, texts) if judge else None
+        by_system[system] = grade_all(recs, truths, ctx, verdicts)
+    tables: dict[str, list[dict[str, object]]] = {}
+    for system, graded in by_system.items():
+        tables[system] = summarize_grades(graded)
+        rows = [r for r in tables[system] if str(r["type"]).startswith(("mode", "all"))]
+        print(f"{system}\n{render_grades(rows)}\n")
+    problems = selftest(by_system)
+    for p in problems:
+        print(f"- {p}")
+    if judge:
+        _print_judge(judge)
+        out = _run_dir(Path(args.out), f"judge-selftest-{args.judge}_{args.split}")
+        summary = {
+            "system": "judge-selftest",
+            "systems": tables,
+            "problems": problems,
+            **base,
+            "judge": {**judge.config(), **judge.stats.__dict__},
+            "created": out.name.split("_", 1)[0],
+        }
+        (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+        (out / "table.md").write_text(
+            "\n\n".join(f"## {s}\n\n{render_grades(rows)}" for s, rows in tables.items()) + "\n"
+        )
+        with (out / "cases.jsonl").open("w", encoding="utf-8") as f:
+            for system, graded in by_system.items():
+                for g in graded:
+                    f.write(
+                        json.dumps({"system": system, **_case_row(g)}, ensure_ascii=False) + "\n"
+                    )
+        print(f"written to {out}")
+    print(f"selftest on {args.split}: " + ("ok" if not problems else f"{len(problems)} problem(s)"))
+    return 1 if problems else 0
 
 
 def _label(summary: dict[str, object]) -> str:
@@ -442,6 +547,10 @@ def build_parser() -> argparse.ArgumentParser:
     what.add_argument("--selftest", action="store_true", help="graders vs the baselines")
     grd.add_argument("--name", help="with --records: the system's name in the run")
     grd.add_argument("--retriever", choices=RETRIEVERS, default="bm25", help="verbose-null")
+    grd.add_argument(
+        "--judge", choices=["none", *JUDGE_MODELS], default="none", help="LLM judge (costs money)"
+    )
+    grd.add_argument("--judge-trial", type=int, default=0, help="judge again (variance)")
     add_retriever_args(grd)
     grd.add_argument("--out", default=str(REPO_ROOT / "evals" / "results" / "grade"))
     cmp = sub.add_parser("compare", help="paired comparison of two runs (B against A)")

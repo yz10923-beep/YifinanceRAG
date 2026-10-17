@@ -9,6 +9,9 @@ passes, a null at chance, a wrong answer that fails), plus two that probe for lo
   one exists, so a dynamic case gets a dynamic wrong answer.
 - rule-only: the canonical answer (rules, no account facts) with perfect doc evidence and
   no data calls. Must fail instance facts on dynamic cases; the course scorer passes it.
+- forbidden: the oracle record plus the case's forbidden conclusion stated as its own.
+  Every deterministic grader still passes it; the judge must flag it (the course scorer
+  does too, but only because the claim is verbatim).
 - verbose-null: the retriever's top 10 chunks pasted as the answer, no LLM.
 
 They read the truth on purpose (except verbose-null); like the oracle retriever they
@@ -27,7 +30,7 @@ from yifinance_rag.grade.truth import Truth
 from yifinance_rag.retrieval.retrievers import Retriever
 
 NULL_ANSWER = "不知道"
-SYSTEMS = ("oracle", "null", "wrong", "rule-only", "verbose-null")
+SYSTEMS = ("oracle", "null", "wrong", "rule-only", "forbidden", "verbose-null")
 
 
 def _doc_calls(truth: Truth, ctx: Context) -> list[ToolCall]:
@@ -83,6 +86,13 @@ def rule_only(truth: Truth, ctx: Context) -> AnswerRecord:
     )
 
 
+def forbidden(truth: Truth, ctx: Context) -> AnswerRecord:
+    claims = [a.split("：", 1)[-1] for a in truth.negative_assertions]
+    base = oracle(truth, ctx)
+    answer = base.answer + "".join(f"\n因此可以认定：{c}。" for c in claims)
+    return base.model_copy(update={"system": "forbidden", "answer": answer})
+
+
 def wrong_partner(truth: Truth, truths: Sequence[Truth]) -> Truth:
     """The next case (in question-id order, wrapping) from another family, preferring
     the same conversation mode. Deterministic, so a rerun grades the same pairs."""
@@ -136,6 +146,7 @@ def build(
         "null": null,
         "wrong": lambda t: wrong(t, picked, ctx),  # partner from the same split
         "rule-only": lambda t: rule_only(t, ctx),
+        "forbidden": lambda t: forbidden(t, ctx),
     }
     if system == "verbose-null":
         if retriever is None or emap is None:

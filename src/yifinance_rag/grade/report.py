@@ -9,12 +9,14 @@ from dataclasses import dataclass
 from yifinance_rag.data.benchmark import TYPES
 from yifinance_rag.grade.course import CourseScore, course_score
 from yifinance_rag.grade.graders import GRADERS, CaseGrade, Context, grade
+from yifinance_rag.grade.judge import Verdicts
 from yifinance_rag.grade.record import AnswerRecord
 from yifinance_rag.grade.truth import Truth
 
 MODES = {"progressive_disclosure": "mode=progressive", "single_turn_complete": "mode=single"}
 COURSE = ("course_task", "course_evidence")
-COLUMNS = (*GRADERS, *COURSE)
+JUDGE = ("judge_assertions", "judge_forbidden_clear", "judge_task")
+COLUMNS = (*GRADERS, *COURSE, *JUDGE)
 
 
 @dataclass
@@ -23,8 +25,11 @@ class Graded:
     truth: Truth
     grade: CaseGrade
     course: CourseScore
+    verdicts: Verdicts | None = None  # None: not judged in this run
 
     def value(self, name: str) -> float | None:
+        if name in JUDGE:
+            return self.verdicts.scores()[name] if self.verdicts else None
         if name == "course_task":
             return float(self.course.task_pass)
         if name == "course_evidence":
@@ -37,7 +42,10 @@ class Graded:
 
 
 def grade_all(
-    records: Sequence[AnswerRecord], truths: Mapping[str, Truth], ctx: Context
+    records: Sequence[AnswerRecord],
+    truths: Mapping[str, Truth],
+    ctx: Context,
+    verdicts: Mapping[str, Verdicts] | None = None,
 ) -> list[Graded]:
     seen: set[str] = set()
     out: list[Graded] = []
@@ -46,7 +54,8 @@ def grade_all(
             raise ValueError(f"two records for case {r.case_id}")
         seen.add(r.case_id)
         t = truths[r.case_id]
-        out.append(Graded(r, t, grade(r, t, ctx), course_score(r, t)))
+        v = verdicts.get(r.case_id) if verdicts is not None else None
+        out.append(Graded(r, t, grade(r, t, ctx), course_score(r, t), v))
     return out
 
 
@@ -94,7 +103,7 @@ def selftest(by_system: Mapping[str, Sequence[Graded]]) -> list[str]:
     answer fails; plus rule-only must fail instance facts. Returns the problems."""
     problems: list[str] = []
     for g in by_system.get("oracle", []):
-        bad = [c for c in COLUMNS if (v := g.value(c)) is not None and v != 1.0]
+        bad = [c for c in (*GRADERS, *COURSE) if (v := g.value(c)) is not None and v != 1.0]
         if bad:
             problems.append(f"oracle below 1.0 on {g.truth.question_id}: {bad}")
     for g in by_system.get("null", []):
@@ -112,4 +121,36 @@ def selftest(by_system: Mapping[str, Sequence[Graded]]) -> list[str]:
     mean = _mean(rule, "instance_facts")
     if mean is not None and mean >= FAIL_BELOW:
         problems.append(f"rule-only passes instance_facts: mean {mean:.3f}")
+    if any(g.course.task_pass for g in by_system.get("forbidden", [])):
+        problems.append("the course scorer missed a verbatim forbidden claim")
+    return problems + judge_selftest(by_system)
+
+
+# The judge is a model: it gets thresholds, not exact values. Chosen before its first run
+# (2026-10-17) and recorded in ROADMAP S3 step 5; changing them is a decision, not tuning.
+JUDGE_ORACLE_MIN = 0.90  # judge_task on the dataset's own answers
+JUDGE_NULL_MAX = 0.05  # judge_assertions on "不知道"
+JUDGE_WRONG_MAX = 0.20  # judge_task on another family's answer
+JUDGE_FORBIDDEN_MAX = 0.10  # judge_forbidden_clear when the claim is stated
+JUDGE_UNPARSED_MAX = 0.05  # share of judged answers with incomplete verdicts
+
+
+def judge_selftest(by_system: Mapping[str, Sequence[Graded]]) -> list[str]:
+    """Only for systems that were judged in this run."""
+    problems: list[str] = []
+    checks = (
+        ("oracle", "judge_task", ">=", JUDGE_ORACLE_MIN),
+        ("null", "judge_assertions", "<=", JUDGE_NULL_MAX),
+        ("wrong", "judge_task", "<=", JUDGE_WRONG_MAX),
+        ("forbidden", "judge_forbidden_clear", "<=", JUDGE_FORBIDDEN_MAX),
+    )
+    for system, col, op, bound in checks:
+        judged = [g for g in by_system.get(system, []) if g.verdicts is not None]
+        mean = _mean(judged, col)
+        if mean is not None and (mean < bound if op == ">=" else mean > bound):
+            problems.append(f"judge on {system}: {col} {mean:.3f}, needs {op} {bound}")
+    judged = [g for gs in by_system.values() for g in gs if g.verdicts is not None]
+    incomplete = sum(not g.verdicts.complete for g in judged if g.verdicts)
+    if judged and incomplete / len(judged) > JUDGE_UNPARSED_MAX:
+        problems.append(f"judge left {incomplete} of {len(judged)} answers incomplete")
     return problems

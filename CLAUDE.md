@@ -242,6 +242,7 @@ uv run yfr retrieval --retriever hybrid --embed-model qwen3-embedding:4b --reran
 uv run yfr grade --selftest      # every grader vs the no-LLM baselines (S3)
 uv run yfr grade --system oracle|null|wrong|rule-only|verbose-null [retrieval flags]
 uv run yfr grade --records FILE --name NAME   # grade a system's answer records
+uv run yfr grade ... --judge haiku|sonnet [--judge-trial N]   # + LLM judge (paid, cached)
 ```
 
 Layout: `src/yifinance_rag/data/` (dataset files and hashes, corpus + `EvidenceMap`,
@@ -371,13 +372,18 @@ top 10 pasted, no LLM) passes the course task 0.433 (53% on all 300), instance f
 (2026-10-17): all tests pass, selftest tables identical; verbose-null with the S2 config
 (no chat model): course task 0.567 on dev, instance facts 0.255, doc evidence 0.714.
 
-## Next session: start here (S3 step 5, the judge, and step 6)
+**S3 step 5 built** (2026-10-17, container): the LLM judge (`--judge haiku|sonnet`):
+per-assertion JSON verdicts with verbatim quotes checked against the answer, incomplete
+replies scored None, cached replies and trials, a `forbidden` baseline, thresholds fixed
+before the first run (ROADMAP "S3 step 5"). `make verify` 136 passed, `make data-test` 4.
+Its paid selftest on dev is Yi's to run (Haiku ~$0.10, Sonnet ~$2 estimated).
+
+## Next session: start here (S3 step 5's paid selftest, then step 6)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3" (order, model
    decisions, step 1 findings, steps 2-4). Graders before the agent, as in yiagent.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo).
-3. Step 5: the LLM judge for required / negative assertions (Haiku 5.5 and Sonnet 5.5;
-   one call per answer, per-assertion JSON verdicts, cached replies, trials), with its
-   own oracle / null / wrong checks on the baselines' records; costs money, so Yi runs it.
+3. Step 5: if Yi has sent the judged selftest output (Haiku and Sonnet), record it in
+   ROADMAP "S3 step 5"; a failed threshold means fixing the prompt, then a rerun.
 4. Step 6: the OpenAI-compatible provider for `deepseek-v4-flash`, then the one-call RAG
    baseline writing answer records (Yi runs it), ~50 dev answers Yi labels, agreement.
 5. S3 is a gate, not a step to compress: no S4 agent variant is compared before its

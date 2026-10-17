@@ -411,7 +411,7 @@ goes to stderr, and the Ollama request timeout is 600 s. Tested (`make verify` 1
 **Done when** every grader passes its oracle/null/wrong checks and the judge's agreement
 with Yi's labels is reported.
 
-**Order for S3 (steps 1-4 done 2026-10-17; see below):**
+**Order for S3 (steps 1-4 done, step 5 built 2026-10-17; see below):**
 1. ~~Read before writing graders~~: done, see "S3 step 1" below.
 2. An answer record format (answer text, cited evidence ids, tool calls with their
    observed evidence ids, clarification turns) that the graders read and the S4 agent
@@ -618,6 +618,41 @@ reference scorer's task check on 53% of questions; my instance-fact grader gives
 
 Next: step 5 (the judge) and step 6 (the DeepSeek provider, the one-call baseline, Yi's
 labels). The judge is the only grader of the free-text required / negative assertions.
+
+### S3 step 5 (2026-10-17): the LLM judge, built; its paid selftest is Yi's
+
+Built (`grade/judge.py`, `yfr grade ... --judge haiku|sonnet`), tested with fake judges
+only (no API calls in `make verify`):
+- One call per answer: the question (opener), the required assertions `A1..`, the
+  forbidden claims `N1..` (the `不得认定：` prefix stripped) and the answer. The reply is
+  JSON: `supported` / `not_supported` per assertion, `asserted` / `not_asserted` per claim,
+  and a verbatim `quote` for every positive verdict. Effort low, no prompt cache, replies
+  cached in `~/.yfr/cache/judge.sqlite` keyed by model, effort, prompt and trial;
+  `--judge-trial N` asks again (variance).
+- Checks that don't trust the judge: a positive verdict whose quote is not in the
+  answer (whitespace aside) counts as negative and is counted as `unverified`; a reply
+  that can't be parsed or leaves an item out scores None and is counted as incomplete,
+  never guessed; API errors after retries stop the run.
+- Scores: `judge_assertions` (share supported), `judge_forbidden_clear` (no claim
+  asserted), `judge_task` (all supported and none asserted; the judged counterpart of
+  `course_task`).
+- A new baseline, **forbidden**: the oracle record plus "因此可以认定：<claim>。". Every
+  deterministic grader still passes it; the judge must flag it.
+- `cohen_kappa` for step 6's agreement with Yi's labels.
+- The reranker and the judge now share `llm/cached.py` (reply cache, trials, retries,
+  cost); the reranker's cache key is unchanged, so existing caches still hit.
+
+**Judge thresholds, fixed before its first run** (changing them later is a decision to
+record, not tuning): on the dev baselines, oracle `judge_task` >= 0.90; null
+`judge_assertions` <= 0.05; wrong `judge_task` <= 0.20; forbidden
+`judge_forbidden_clear` <= 0.10; incomplete verdicts <= 5% of judged answers.
+verbose-null and rule-only are reported, not thresholded: rule-only is a correct answer on
+the free-text assertions (instance facts fail it), and verbose-null is the probe: how
+much less than the course scorer's 0.567 a judge gives pasted chunks.
+
+Run (Yi, VM, paid): `yfr grade --selftest --judge haiku` and `--judge sonnet`, with the
+S2 retrieval flags for verbose-null. Estimate from prompt sizes (360 prompts, ~720k
+characters on dev): Haiku ~$0.10, Sonnet ~$2; the run prints the measured cost.
 
 ## S4 agent
 
