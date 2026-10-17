@@ -101,6 +101,22 @@ def load_benchmark(ds: Dataset) -> tuple[list[Question], dict[str, Label]]:
     return parse_rows(ds.read_jsonl(BLUEPRINTS))
 
 
+def with_user_facts(question: Question, label: Label) -> Question:
+    """The opening message plus every fact the simulated user would reveal when asked.
+
+    An upper-bound condition, like the oracle: it reads the label (grader-side), so it
+    measures how much a perfectly asking agent could gain, never what an agent sees.
+    Single-turn questions are returned unchanged."""
+    if label.conversation_mode != "progressive_disclosure":
+        return question
+    conversation = label.raw.get("conversation")
+    facts = conversation.get("available_user_facts") if isinstance(conversation, dict) else []
+    values = [
+        str(f["user_value"]) for f in facts or [] if isinstance(f, dict) and "user_value" in f
+    ]
+    return Question(case_id=question.case_id, text="\n".join([question.text, *values]))
+
+
 def split_hash(labels: Iterable[Label]) -> str:
     """Identifies the split: which question is in which split. Pinned in data/pins.py."""
     lines = sorted(f"{lab.question_id}\t{lab.split}" for lab in labels)

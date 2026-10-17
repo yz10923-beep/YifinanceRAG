@@ -121,7 +121,7 @@ def test_cases_without_doc_evidence_are_counted_not_scored(tmp_path: Path) -> No
     )
     assert skipped == 1 and len(results) == 3
     rows = summarize(results)
-    assert [r["type"] for r in rows] == ["simple_retrieval", "multi_document", "all"]
+    assert [r["type"] for r in rows] == ["simple_retrieval", "multi_document", "mode=single", "all"]
     assert "| all | 3 | 1.000 | 1.000 | 1.000 | 1.000 |" in render_table(rows)
 
 
@@ -184,3 +184,14 @@ def test_compare_runs_through_the_cli(
     )
     test_run = next(p for p in out.iterdir() if p.name.endswith("_test"))
     assert main(["compare", str(oracle), str(test_run)]) == 1  # different cases: refused
+
+
+def test_rows_and_comparisons_split_by_conversation_mode() -> None:
+    a = CaseResult("p", "multi_hop", ("g",), (("g",),), "progressive_disclosure")
+    b = CaseResult("s", "multi_hop", ("g",), ((),), "single_turn_complete")
+    old = CaseResult("o", "multi_hop", ("g",), ((),))  # recorded before modes were stored
+    rows = {r["type"]: r for r in summarize([a, b, old])}
+    assert rows["mode=progressive"]["n"] == 1 and rows["mode=single"]["n"] == 1
+    assert rows["all"]["n"] == 3 and rows["multi_hop"]["recall@10"] == 1 / 3
+    groups = {c.group for c in compare({"p": a, "s": b}, {"p": b, "s": a}, "recall@10")}
+    assert {"mode=progressive", "mode=single", "all"} <= groups

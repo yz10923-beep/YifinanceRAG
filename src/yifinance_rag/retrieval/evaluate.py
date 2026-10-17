@@ -18,6 +18,8 @@ from yifinance_rag.data.corpus import EvidenceMap
 from yifinance_rag.retrieval.retrievers import Retriever
 
 KS = (5, 10)
+# Conversation modes, reported as extra rows next to the question types.
+MODES = {"progressive_disclosure": "mode=progressive", "single_turn_complete": "mode=single"}
 
 
 @dataclass(frozen=True)
@@ -26,6 +28,11 @@ class CaseResult:
     question_type: str
     gold: tuple[str, ...]
     ranked: tuple[tuple[str, ...], ...]  # evidence ids of each retrieved chunk, in rank order
+    mode: str = ""  # conversation mode; "" in runs recorded before it was stored
+
+    def groups(self) -> tuple[str, ...]:
+        """The table rows this case counts in: its type, its mode, and "all"."""
+        return (self.question_type, *([MODES[self.mode]] if self.mode in MODES else []), "all")
 
     def recall(self, k: int) -> float:
         found = {e for ids in self.ranked[:k] for e in ids}
@@ -61,7 +68,9 @@ def evaluate(
         hits = retriever.search(q, k)
         ranked = tuple(tuple(emap.ids_for(h.chunk)) for h in hits[:k])
         gold = tuple(dict.fromkeys(label.doc_evidence))
-        results.append(CaseResult(q.case_id, label.question_type, gold, ranked))
+        results.append(
+            CaseResult(q.case_id, label.question_type, gold, ranked, label.conversation_mode)
+        )
     return results, skipped
 
 
@@ -82,12 +91,10 @@ def _means(results: Sequence[CaseResult], ks: Sequence[int]) -> dict[str, float]
 def summarize(results: Sequence[CaseResult], ks: Sequence[int] = KS) -> list[dict[str, object]]:
     """One row per question type present, then "all" (mean over cases, not over types)."""
     rows: list[dict[str, object]] = []
-    for t in TYPES:
-        group = [r for r in results if r.question_type == t]
+    for name in [*TYPES, *MODES.values(), "all"]:
+        group = [r for r in results if name in r.groups()]
         if group:
-            rows.append({"type": t, "n": len(group), **_means(group, ks)})
-    if results:
-        rows.append({"type": "all", "n": len(results), **_means(results, ks)})
+            rows.append({"type": name, "n": len(group), **_means(group, ks)})
     return rows
 
 

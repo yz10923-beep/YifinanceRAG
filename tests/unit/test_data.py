@@ -16,6 +16,7 @@ from yifinance_rag.data.benchmark import (
     parse_rows,
     select,
     split_hash,
+    with_user_facts,
 )
 from yifinance_rag.data.corpus import (
     Chunk,
@@ -162,3 +163,16 @@ def test_split_hash_and_select(ds: Dataset) -> None:
     ]
     with pytest.raises(ValueError):
         select(questions, labels, "train")
+
+
+def test_user_facts_are_appended_to_progressive_openers_only() -> None:
+    progressive = blueprint("Q-P", "multi_source", "dev", "付款失败了", [])
+    progressive["conversation"] = {
+        "mode": "progressive_disclosure",
+        "available_user_facts": [{"fact_id": "a", "user_value": "账户是 acct_1"}, {"x": 1}],
+    }
+    single = blueprint("Q-S", "simple_retrieval", "dev", "FP-4041 是什么？", [])
+    questions, labels = parse_rows([progressive, single])
+    told = [with_user_facts(q, labels[q.case_id]) for q in questions]
+    assert told[0].text == "付款失败了\n账户是 acct_1" and told[0].case_id == questions[0].case_id
+    assert told[1] == questions[1]

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from yifinance_rag.data.benchmark import TYPES
-from yifinance_rag.retrieval.evaluate import CaseResult
+from yifinance_rag.retrieval.evaluate import MODES, CaseResult
 
 
 def load_run(run_dir: Path) -> tuple[dict[str, object], dict[str, CaseResult]]:
@@ -28,6 +28,7 @@ def load_run(run_dir: Path) -> tuple[dict[str, object], dict[str, CaseResult]]:
             row["type"],
             tuple(row["gold"]),
             tuple(tuple(ids) for ids in row["ranked"]),
+            row.get("mode", ""),
         )
     return summary, cases
 
@@ -84,8 +85,8 @@ def compare(
     if set(a) != set(b):
         raise ValueError(f"runs cover different cases ({len(a)} vs {len(b)})")
     out: list[Comparison] = []
-    for group in [*TYPES, "all"]:
-        ids = sorted(c for c in a if group in ("all", a[c].question_type))
+    for group in [*TYPES, *MODES.values(), "all"]:
+        ids = sorted(c for c in a if group in a[c].groups())
         if not ids:
             continue
         va = [metric(a[c], name) for c in ids]

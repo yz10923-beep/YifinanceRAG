@@ -22,7 +22,7 @@ from pathlib import Path
 import psycopg
 
 from yifinance_rag.config import REPO_ROOT, ConfigError, Settings, cache_dir, load_settings
-from yifinance_rag.data.benchmark import load_benchmark, select, split_hash
+from yifinance_rag.data.benchmark import load_benchmark, select, split_hash, with_user_facts
 from yifinance_rag.data.check import check_dataset
 from yifinance_rag.data.corpus import EvidenceMap, benchmark_chunks, chunk_set_hash, load_docs
 from yifinance_rag.data.dataset import RELEASE_MANIFEST, DataError, Dataset, sha256_file
@@ -113,6 +113,8 @@ def cmd_retrieval(
     chunks = benchmark_chunks(load_docs(ds))
     questions, labels = load_benchmark(ds)
     picked = select(questions, labels, args.split)
+    if args.user_facts:
+        picked = [with_user_facts(q, labels[q.case_id]) for q in picked]
     retriever: Retriever
     if args.retriever == "bm25":
         retriever = BM25Retriever(chunks, k1=args.k1, b=args.b)
@@ -142,7 +144,8 @@ def cmd_retrieval(
     reachable = {e for c in index for e in emap.ids_for(c)}
 
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    base = Path(args.out) / f"{stamp}_{retriever.name}_{args.split}"
+    facts = "+facts" if args.user_facts else ""
+    base = Path(args.out) / f"{stamp}_{retriever.name}{facts}_{args.split}"
     out, n = base, 1
     while out.exists():  # two runs in the same second
         n += 1
@@ -152,6 +155,7 @@ def cmd_retrieval(
         "retriever": retriever.name,
         "config": retriever.config(),
         "split": args.split,
+        "query": "opener + all simulated-user facts (upper bound)" if args.user_facts else "opener",
         "cases": len(results),
         "cases_without_doc_evidence": skipped,
         "rows": rows,
@@ -169,7 +173,7 @@ def cmd_retrieval(
     (out / "table.md").write_text(table + "\n")
     with (out / "cases.jsonl").open("w", encoding="utf-8") as f:
         for r in results:
-            row: dict[str, object] = {"case_id": r.case_id, "type": r.question_type}
+            row: dict[str, object] = {"case_id": r.case_id, "type": r.question_type, "mode": r.mode}
             row |= {"gold": r.gold, "ranked": r.ranked}
             row |= {"recall@10": r.recall(10), "mrr@10": r.mrr(10)}
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
@@ -212,6 +216,11 @@ def build_parser() -> argparse.ArgumentParser:
     ret.add_argument("--embed-model", choices=sorted(EMBED_MODELS), default=COURSE_MODEL)
     ret.add_argument("--rrf-k", type=int, default=60, help="RRF constant (paper value)")
     ret.add_argument("--depth", type=int, default=100, help="hits fused per retriever")
+    ret.add_argument(
+        "--user-facts",
+        action="store_true",
+        help="upper bound: append every fact the simulated user would reveal (grader-side)",
+    )
     ret.add_argument("--out", default=str(REPO_ROOT / "evals" / "results" / "retrieval"))
     cmp = sub.add_parser("compare", help="paired comparison of two runs (B against A)")
     cmp.add_argument("run_a", type=Path)
