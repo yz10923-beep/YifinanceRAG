@@ -370,7 +370,8 @@ $0.0005 a search. Costs to keep in view in S4:
 
 The bigger lever left is not retrieval: on the 36 progressive openers, giving the
 question all the simulated user's facts added +0.147 recall@10 (BM25). S4's ask-user
-loop is where that is won.
+loop is where that is won. It is measured only after S3: retrieval metrics can score the
+agent's queries, but whether asking produces better answers needs S3's graders.
 
 Interview line: "Dense-only retrieval, as in the reference course, found 29% of gold
 chunks in the top 10. BM25 with jieba found 46%, fusion 55%, a larger embedder 60%, and

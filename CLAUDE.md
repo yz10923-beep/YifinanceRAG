@@ -351,7 +351,10 @@ course-dense 0.293, BM25 0.456, hybrid 0.549, hybrid-4b 0.604, + rerank 0.714 re
    null baselines inside `make verify`. No money needed for that part.
 4. Decisions for Yi before paid work: the judge model, and the one-call RAG baseline that
    produces the ~50 dev answers Yi labels by hand for judge calibration.
-5. Keep the time box (about 3 weeks in all; S0-S2 took 2 days): S3 in a few days, then S4.
+5. S3 is a gate, not a step to compress: no S4 agent variant is compared before its
+   graders pass their oracle / null / wrong checks, or S4's A/Bs (tool shape,
+   `disputed()`, budgets, ask-user) would be chosen by reading outputs. The time box
+   (about 3 weeks in all) is met by keeping S3's scope tight, not by skipping it.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,
   `s2_rerank_dev_paired.md`, `s2_user_facts_upper_bound.md`). The two rerank runs'
