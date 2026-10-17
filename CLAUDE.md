@@ -394,6 +394,9 @@ the course's chat config (`deepseek-v4-flash`, thinking disabled, 4096 tokens; p
 unknown = None until Yi reads it), the one-call baseline (`yfr answer`), blind label
 sheets and agreement (`yfr label-sheet`, `yfr agree`). `make verify` 153 passed,
 `make data-test` 5 passed (incl. a no-ids check on every one-call prompt).
+**One-call on dev (VM, 2026-10-17):** judge_task 0.383 (Haiku and Sonnet; Haiku trial 2
+0.333), single-turn 0.667, progressive 0.194; instance facts 0.208; course task 0.383.
+About equal to pasting the chunks with no model (0.367 / 0.350). Yi is labelling.
 
 ## Next session: start here (S3 step 6: Yi's runs and labels)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3", steps 5 and 6.

@@ -717,6 +717,18 @@ labels exist): compare kappa over all items; keep Haiku unless Sonnet's kappa is
 by more than the gap between two Haiku trials (`--judge-trial 1` on the same records).
 Report kappa per kind and at the task level either way.
 
+**One-call baseline on dev (VM, 2026-10-17)** (`evals/records/grade/s3_onecall_dev.md`):
+judge_task 0.383 with both judges (Haiku trial 2: 0.333, so the trial-to-trial gap is
+0.050); single-turn 0.667, progressive 0.194. doc_evidence 0.714 (= the S2 config),
+instance_facts 0.208, course_task 0.383. Read against pasting the same chunks with no
+chat model (judge_task 0.367 / 0.350): **one DeepSeek call adds about nothing on the
+judge**, and scores lower on the course scorer (0.383 vs 0.567) and on instance facts
+(0.208 vs 0.255), since a concise answer repeats fewer of the passages' words and ids.
+On progressive questions it can't do better without asking and looking up the account:
+that is S4's job, and 0.194 is the bar. Judge cost for 60 answers: Haiku $0.018, Sonnet
+$0.258. The two judges agree in aggregate; item-level agreement with Yi decides (labels
+pending).
+
 ## S4 agent
 
 Own loop over the vendored provider, answering with `deepseek-v4-flash` through the

@@ -615,7 +615,19 @@ def cmd_answer(
 
 
 def cmd_label_sheet(ds: Dataset, args: argparse.Namespace) -> int:
-    run = Path(args.run)
+    if args.run:
+        run = Path(args.run)
+    else:
+        runs = sorted(
+            p for p in Path(args.answers).glob("*_dev") if (p / "records.jsonl").is_file()
+        )
+        if not runs:
+            print(f"no dev answer runs under {args.answers}; run `yfr answer` first")
+            return 1
+        run = runs[-1]  # names start with a UTC timestamp: the last is the newest
+    if not (run / "records.jsonl").is_file():
+        print(f"no records.jsonl in {run}: give the directory `yfr answer` printed")
+        return 1
     questions, labels = load_benchmark(ds)
     records = read_records(run / "records.jsonl")
     if any(labels[r.case_id].split != "dev" for r in records):
@@ -716,7 +728,8 @@ def build_parser() -> argparse.ArgumentParser:
     ans.add_argument("--answer-trial", type=int, default=0, help="answer again (variance)")
     ans.add_argument("--out", default=str(REPO_ROOT / "evals" / "results" / "answers"))
     lab = sub.add_parser("label-sheet", help="write a blind label sheet for a run's answers")
-    lab.add_argument("run", help="a run directory with records.jsonl")
+    lab.add_argument("run", nargs="?", help="an answer run directory (default: the newest)")
+    lab.add_argument("--answers", default=str(REPO_ROOT / "evals" / "results" / "answers"))
     agr = sub.add_parser("agree", help="judge vs Yi's labels: agreement and Cohen's kappa")
     agr.add_argument("labels", help="a filled labels.tsv")
     agr.add_argument("runs", nargs="+", help="judged grade runs of the same records")

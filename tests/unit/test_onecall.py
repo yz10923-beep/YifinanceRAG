@@ -111,7 +111,9 @@ def test_label_sheet_then_agreement_with_a_judge(
         cli.main(["grade", "--records", records, "--judge", "haiku", "--out", str(env / "g")]) == 0
     )
     (judged,) = (env / "g").iterdir()
-    assert cli.main(["label-sheet", str(answers)]) == 0
+    assert cli.main(["label-sheet", str(env / "nowhere")]) == 1  # a clear message, no traceback
+    assert cli.main(["label-sheet", "--answers", str(env / "answers")]) == 0  # the newest run
+    assert (answers / "labels.tsv").is_file()
     sheet = (answers / "labels.md").read_text()
     assert "blind" in sheet and "**A1**" in sheet and "judge" not in sheet.split("\n", 1)[1]
     # Yi's labels: the judge's own verdicts, with one flipped
