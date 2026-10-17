@@ -186,6 +186,11 @@ def cmd_retrieval(
     return 0
 
 
+def _label(summary: dict[str, object]) -> str:
+    facts = "" if summary.get("query", "opener") == "opener" else "+facts"
+    return f"{summary['retriever']}{facts}"
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     summary_a, a = load_run(args.run_a)
     summary_b, b = load_run(args.run_b)
@@ -195,7 +200,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
             return 1
     for name in args.metric or ["recall@10", "mrr@10"]:
         rows = compare(a, b, name)
-        print(render(rows, str(summary_a["retriever"]), str(summary_b["retriever"]), name))
+        print(render(rows, _label(summary_a), _label(summary_b), name))
         print()
     return 0
 

@@ -177,7 +177,9 @@ def test_compare_runs_through_the_cli(
     assert (overall.mean_a, overall.mean_b, overall.losses, overall.wins) == (1.0, 0.0, 2, 0)
     capsys.readouterr()
     assert main(["compare", str(oracle), str(wrong)]) == 0
-    assert "| all | 2 | 1.000 | 0.000 | -1.000 |" in capsys.readouterr().out
+    printed = capsys.readouterr().out
+    assert "| all | 2 | 1.000 | 0.000 | -1.000 |" in printed
+    assert "B = wrong-oracle vs A = oracle" in printed
     assert (
         main(["retrieval", "--retriever", "bm25", "--split", "test", "--final", "--out", str(out)])
         == 0
