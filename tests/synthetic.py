@@ -126,7 +126,218 @@ def blueprint(
     }
 
 
-def write_dataset(root: Path) -> Path:
+# A second question set for the S3 graders, in the real blueprint and resolution layout:
+# two scenario families (the wrong baseline needs another family), each with a
+# single-turn and a dynamic question, plus one test question. Written instead of
+# QUESTIONS by write_dataset(root, graded=True).
+F1_AS_OF = "2026-08-02T12:00:00Z"
+F2_AS_OF = "2026-08-10T12:00:00Z"
+NEGATIVE_PAYMENT = "negative:sql:payment:294c61a6865e5f11ad07"
+
+
+def _selector(
+    alias: str, tool: str, ids: list[str], params: dict[str, str], as_of: str, **kw: str
+) -> dict[str, object]:
+    negative = ids[0].startswith("negative:")
+    return {
+        "alias": alias,
+        "tool": tool,
+        "operation": alias,
+        "cardinality": kw.get("cardinality", "exactly_one"),
+        "evidence_mode": "negative_assertion" if negative else "records",
+        "evidence_ids": ids,
+        "normalized_payload": {"operation": alias, "as_of": as_of, **params},
+        "ok": True,
+    }
+
+
+F1_SCOPE = {"account_id": "acct_bm_001", "environment": "production"}
+F2_SCOPE = {"account_id": "acct_bm_036", "environment": "production"}
+GRADED: list[dict[str, object]] = [
+    {
+        "question_id": "G-SR-001",
+        "question_type": "simple_retrieval",
+        "split": "dev",
+        "family": "SF-001-tenant",
+        "question": "查询另一个账户的支付返回 FP-4041，能说明支付不存在吗？",
+        "as_of": F1_AS_OF,
+        "assertions": ["资源属于其他账户时返回 FP-4041，不能证明资源不存在。"],
+        "negative": "不得认定：把 FP-4041 直接解释为 Payment ID 拼写错误",
+        "docs": ["doc:KB-TS-012#c003"],
+        "tools": ["search_troubleshooting"],
+    },
+    {
+        "question_id": "G-MS-001",
+        "question_type": "multi_source",
+        "split": "dev",
+        "family": "SF-001-tenant",
+        "question": "后台能看到一笔支付，但服务里查询提示找不到。",
+        "as_of": F1_AS_OF,
+        "assertions": ["资源属于其他账户时返回 FP-4041，不能证明资源不存在。"],
+        "negative": "不得认定：把 FP-4041 直接解释为 Payment ID 拼写错误",
+        "docs": ["doc:KB-TS-012#c003"],
+        "tools": [
+            "search_troubleshooting",
+            "query_accounts",
+            "query_payments",
+            "get_runtime_state",
+        ],
+        "categories": ["occurrence_time", "identifiers"],
+        "selectors": [
+            _selector(
+                "get_account", "query_accounts", ["sql:account:acct_bm_001"], F1_SCOPE, F1_AS_OF
+            ),
+            _selector(
+                "get_payment",
+                "query_payments",
+                [NEGATIVE_PAYMENT],
+                {**F1_SCOPE, "payment_id": "pay_bm_001"},
+                F1_AS_OF,
+            ),
+            _selector(
+                "get_request",
+                "get_runtime_state",
+                ["runtime:req:req_bm_001_01"],
+                {**F1_SCOPE, "request_id": "req_bm_001_01"},
+                F1_AS_OF,
+            ),
+        ],
+        "trajectory": [
+            "账户 acct_bm_001 当时套餐为 Growth、主地区为 NA，Production 状态为 active。",
+            "在限定范围（as_of=2026-08-02T12:00:00Z、payment_id=pay_bm_001、"
+            "account_id=acct_bm_001）内没有查到 get_payment 对应记录。",
+            "请求 req_bm_001_01 在 2026 年 08 月 02 日 11:50 UTC 以 POST 调用 /v1/payments，"
+            "返回 HTTP 404、错误码 FP-4041。",
+        ],
+    },
+    {
+        "question_id": "G-MD-002",
+        "question_type": "multi_document",
+        "split": "dev",
+        "family": "SF-002-refund",
+        "question": "支付成功 200 天后发起退款会怎样，Starter 套餐能部分退款吗？",
+        "as_of": F2_AS_OF,
+        "assertions": [
+            "支付成功后 180 天内可以发起退款，超过窗口返回 FP-4222。",
+            "Starter 套餐不支持部分退款。",
+        ],
+        "negative": "不得认定：超过窗口仍可人工退款",
+        "docs": ["doc:KB-BR-012#c002", "doc:KB-BR-012#c003"],
+        "tools": ["search_business_rules"],
+    },
+    {
+        "question_id": "G-MH-002",
+        "question_type": "multi_hop",
+        "split": "dev",
+        "family": "SF-002-refund",
+        "question": "客户的退款一直失败，不知道是不是规则问题。",
+        "as_of": F2_AS_OF,
+        "assertions": ["支付成功后 180 天内可以发起退款，超过窗口返回 FP-4222。"],
+        "negative": "不得认定：超过窗口仍可人工退款",
+        "docs": ["doc:KB-BR-012#c002"],
+        "tools": ["search_business_rules", "query_payments", "get_runtime_state"],
+        "categories": ["identifiers"],
+        "selectors": [
+            _selector(
+                "get_refund",
+                "query_payments",
+                ["sql:refund:re_bm_036"],
+                {**F2_SCOPE, "refund_id": "re_bm_036"},
+                F2_AS_OF,
+            ),
+            _selector(
+                "list_requests",
+                "get_runtime_state",
+                ["runtime:req:req_bm_036_01", "runtime:req:req_bm_036_02"],
+                F2_SCOPE,
+                F2_AS_OF,
+                cardinality="at_least_one",
+            ),
+        ],
+        "trajectory": [
+            "退款 re_bm_036 状态 failed，金额 5000，错误码 FP-4222。",
+            "请求 req_bm_036_01 在 2026 年 08 月 10 日 09:05 UTC 返回 HTTP 422。",
+        ],
+    },
+    {
+        "question_id": "G-SR-003",
+        "question_type": "simple_retrieval",
+        "split": "test",
+        "family": "SF-003-idempotency",
+        "question": "幂等键冲突返回什么错误码？",
+        "as_of": F2_AS_OF,
+        "assertions": ["同一幂等键配合不同参数时返回 FP-4091。"],
+        "negative": "不得认定：幂等冲突可以换参数重试",
+        "docs": ["doc:KB-API-033#c003"],
+        "tools": ["search_api_docs"],
+    },
+]
+
+
+def graded_blueprint(spec: dict[str, object]) -> dict[str, object]:
+    """A resolved blueprint with every field the graders read."""
+    qid = str(spec["question_id"])
+    selectors = list(spec.get("selectors", []))  # type: ignore[call-overload]
+    trajectory = list(spec.get("trajectory", []))  # type: ignore[call-overload]
+    dynamic = bool(selectors)
+    assertions = [str(a) for a in spec["assertions"]]  # type: ignore[attr-defined]
+    canonical = " ".join(assertions)
+    categories = list(spec.get("categories", []))  # type: ignore[call-overload]
+    ids = [*spec["docs"], *(e for s in selectors for e in s["evidence_ids"])]  # type: ignore[misc]
+    return {
+        "question_id": qid,
+        "question": spec["question"],
+        "question_type": spec["question_type"],
+        "split": spec["split"],
+        "scenario_family_id": spec["family"],
+        "as_of": spec["as_of"],
+        "conversation": {
+            "mode": "progressive_disclosure" if dynamic else "single_turn_complete",
+            "initial_user_message": spec["question"],
+            "available_user_facts": [],
+            "required_clarification_categories": categories,
+            "max_clarification_turns": 2 if dynamic else 0,
+            "clarification_plan": (
+                [
+                    {
+                        "assistant_question": "什么时候发生的？相关编号是什么？",
+                        "categories": categories,
+                    }
+                ]
+                if dynamic
+                else []
+            ),
+        },
+        "ground_truth": {
+            "canonical_answer": canonical,
+            "required_assertions": [
+                {"assertion_id": f"{qid}-A{i}", "text": a} for i, a in enumerate(assertions, 1)
+            ],
+            "negative_assertions": [spec["negative"]],
+            "acceptable_variants": [],
+        },
+        "resolved_answer": ("\n".join([*trajectory, canonical]) if dynamic else None),
+        "resolved_trajectory_assertions": [
+            {
+                "assertion_id": f"{qid}-T{i}",
+                "selector_alias": s["alias"],
+                "text": text,
+                "evidence_ids": s["evidence_ids"],
+            }
+            for i, (s, text) in enumerate(zip(selectors, trajectory, strict=True), 1)
+        ],
+        "required_tools": spec["tools"],
+        "required_operations": [f"{s['tool']}.{s['operation']}" for s in selectors],
+        "forbidden_shortcuts": [
+            "support_case_as_current_fact",
+            "current_state_used_for_historical_question",
+            "raw_sql_or_hidden_audit_access",
+        ],
+        "resolved_evidence_ids": ids,
+    }
+
+
+def write_dataset(root: Path, *, graded: bool = False) -> Path:
     for rel, text in DOCS.items():
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(text, encoding="utf-8")
@@ -143,15 +354,24 @@ def write_dataset(root: Path) -> Path:
     )
     bench = root / "benchmark/resolved"
     bench.mkdir(parents=True)
-    blueprints = [blueprint(*q) for q in QUESTIONS]
+    if graded:
+        blueprints = [graded_blueprint(s) for s in GRADED]
+        resolution = [
+            {
+                "question_id": s["question_id"],
+                "resolved_evidence_ids": b["resolved_evidence_ids"],
+                "selector_results": s.get("selectors", []),
+            }
+            for s, b in zip(GRADED, blueprints, strict=True)
+        ]
+    else:
+        blueprints = [blueprint(*q) for q in QUESTIONS]
+        resolution = [{"question_id": q[0], "resolved_evidence_ids": q[4]} for q in QUESTIONS]
     (bench / "resolved_blueprints.jsonl").write_text(
         "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in blueprints)
     )
     (bench / "evidence_resolution.jsonl").write_text(
-        "".join(
-            json.dumps({"question_id": q[0], "resolved_evidence_ids": q[4]}) + "\n"
-            for q in QUESTIONS
-        )
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in resolution)
     )
     write_release(root)
     return root
