@@ -54,7 +54,7 @@ class OllamaEmbedder:
         *,
         model: str = COURSE_MODEL,
         batch_size: int = 8,
-        timeout: float = 120.0,
+        timeout: float = 600.0,  # per request: a batch of 8 on a 4B model on CPU can take minutes
     ) -> None:
         if model not in EMBED_MODELS:
             raise ValueError(f"{model!r} is not one of {sorted(EMBED_MODELS)}")

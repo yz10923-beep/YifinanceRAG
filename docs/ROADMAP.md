@@ -249,6 +249,33 @@ Built (code, 2026-10-16; `make verify` 100 passed):
 - Comparisons to run: hybrid vs BM25 (does fusion add anything over the stronger part?),
   dense-809-4b vs dense-809 (model size), hybrid-4b vs hybrid.
 
+**Hybrid result (VM, 2026-10-17, commit `994c638`;** run and paired tables in
+`evals/records/retrieval/`, `s2_dev_paired.md`):
+
+| dev (60) | recall@10 | complete@10 | MRR@10 |
+|---|---:|---:|---:|
+| BM25 | 0.456 | 0.317 | 0.287 |
+| dense-809 | 0.276 | 0.117 | 0.222 |
+| **hybrid (RRF, BM25 + dense-809)** | **0.549** | **0.367** | **0.302** |
+
+- **Hybrid vs BM25: recall@10 +0.094**, 20 wins / 8 losses / 32 ties, sign p 0.036,
+  bootstrap 95% CI [-0.004, +0.191] (touches 0). Borderline on 60 questions: "likely
+  better", to be settled on test. MRR +0.015, not distinguishable.
+- **Hybrid vs dense-809: +0.273**, 28/3/29, CI [+0.180, +0.371]: clearly better.
+- Reading: dense alone is the weaker retriever, but it finds *different* gold chunks than
+  BM25, so fusion recovers some of BM25's misses. Gains sit on the harder types
+  (multi_hop +0.21, multi_source +0.17, tool_use_diagnostic +0.15, temporal +0.11);
+  simple_retrieval, where BM25 is already strong, loses a little (-0.07, 1/2/11).
+- Hybrid is now the S2 baseline to beat; each next variant is compared with it.
+
+**4B run, first attempt (2026-10-17): no scores (infra failure, as designed).** Three
+runs hit Ollama at once (the background run was started twice and hybrid-4b began while
+both were embedding); a CPU Ollama serves one request at a time, so a batch waited past
+the 120 s client timeout. Fixed in code: the embedding cache now commits every 32
+texts (an interruption loses at most one batch; a rerun resumes), computing holds an
+exclusive file lock (a second run waits, then reuses the first run's vectors), progress
+goes to stderr, and the Ollama request timeout is 600 s. Tested (`make verify` 102).
+
 ## S3 answer graders
 
 - Deterministic: evidence ids cited vs gold, trajectory assertions, forbidden shortcuts.

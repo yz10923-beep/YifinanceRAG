@@ -313,5 +313,9 @@ progressive-disclosure openers (ROADMAP S1b).
 **S2 started** (2026-10-16): Yi chose hybrid first plus a model option for the dense
 runs. Built: `--retriever hybrid` (RRF over BM25 + dense-809, k = 60) and `--embed-model`
 (Qwen3-Embedding 0.6b/4b/8b; course model digest-pinned). `make verify` 100 passed.
-**Next:** Yi runs hybrid (0.6B, cached), then pulls `qwen3-embedding:4b` and runs
-dense-809-4b and hybrid-4b, with `yfr compare` for each (ROADMAP S2).
+**Hybrid on dev (VM, 2026-10-17):** recall@10 0.549 vs BM25 0.456 (+0.094, 20/8/32,
+sign p 0.036, CI just touches 0) and vs dense-809 0.276 (+0.273, CI excludes 0); MRR not
+distinguishable. Hybrid is the S2 baseline now. The first 4B run failed as an infra error
+(three concurrent runs on a CPU Ollama); the cache now commits per batch, locks against
+concurrent runs and reports progress; request timeout 600 s. `make verify` 102 passed.
+**Next:** Yi reruns dense-809-4b (one process), then hybrid-4b and the compares.

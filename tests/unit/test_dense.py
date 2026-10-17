@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -143,3 +144,53 @@ def test_cli_dense_without_ollama_writes_no_scores(
     out = tmp_path / "runs"
     assert main(["retrieval", "--retriever", "dense-809", "--out", str(out)]) == 3
     assert not out.exists()
+
+
+def test_an_interrupted_run_keeps_what_it_embedded(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    class FailsOnSecondBatch(CountingEmbedder):
+        def embed(self, texts: Sequence[str]) -> list[list[float]]:
+            if self.calls:
+                raise EmbedError("timed out")
+            return super().embed(texts)
+
+    texts = [f"段落{i}" for i in range(10)]
+    cached = CachedEmbedder(FailsOnSecondBatch(), tmp_path / "e.sqlite", flush_every=4)
+    with pytest.raises(EmbedError):
+        cached.embed(texts)
+    resumed = CachedEmbedder(CountingEmbedder(), tmp_path / "e.sqlite", flush_every=4)
+    resumed.embed(texts)
+    assert resumed.computed == 6  # the first flush of 4 survived the failure
+    assert "embedded 4/6" in capsys.readouterr().err
+
+
+def test_a_second_run_waits_and_reuses_the_first_runs_vectors(tmp_path: Path) -> None:
+    started, release = threading.Event(), threading.Event()
+
+    class Slow(CountingEmbedder):
+        def embed(self, texts: Sequence[str]) -> list[list[float]]:
+            started.set()
+            release.wait(10)
+            return super().embed(texts)
+
+    texts = ["甲乙丙", "丁戊己"]
+    computed: dict[str, int] = {}
+
+    def run(name: str, inner: CountingEmbedder) -> None:
+        # one embedder per thread, as two processes would each have their own connection
+        cached = CachedEmbedder(inner, tmp_path / "e.sqlite")
+        cached.embed(texts)
+        computed[name] = cached.computed
+
+    worker = threading.Thread(target=run, args=("first", Slow()))
+    worker.start()
+    assert started.wait(10)
+    waiter = threading.Thread(target=run, args=("second", CountingEmbedder()))
+    waiter.start()
+    waiter.join(0.5)
+    assert waiter.is_alive()  # blocked on the lock while the first run computes
+    release.set()
+    worker.join(10)
+    waiter.join(10)
+    assert computed == {"first": 2, "second": 0}
