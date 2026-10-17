@@ -159,8 +159,12 @@ class AnthropicProvider:
         refusal_fallback: bool = True,
         api_key: str | None = None,
         client: anthropic.AsyncAnthropic | None = None,
+        prompt_cache: bool = True,
     ) -> None:
         self._model = model
+        # Off for one-shot prompts (e.g. a reranker): writing a cache entry nobody reads
+        # costs 1.25x the input price.
+        self._prompt_cache = prompt_cache
         self._max_tokens = max_tokens
         if effort and not supports_effort(model):
             # Dropped rather than sent: the API would reject every request with a 400.
@@ -188,11 +192,13 @@ class AnthropicProvider:
             "max_tokens": self._max_tokens,
             "system": system,
             "messages": messages,
-            "tools": tools,
+        }
+        if tools:  # a tool-less call (e.g. the reranker) sends no tools field at all
+            req["tools"] = tools
+        if self._prompt_cache:
             # Auto-cache the longest stable prefix. Every loop step resends the whole
             # history, so without this input cost grows quadratically with steps.
-            "cache_control": {"type": "ephemeral"},
-        }
+            req["cache_control"] = {"type": "ephemeral"}
         if self._effort:
             req["output_config"] = {"effort": self._effort}
         betas = []

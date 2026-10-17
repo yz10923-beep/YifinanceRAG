@@ -323,5 +323,10 @@ simulated-user fact to the 36 dev openers: BM25 recall@10 0.315 to 0.462 (+0.147
 0.008), as large as hybrid's gain, so S4's ask-user loop is the next big lever. Tables
 and comparisons now have per-mode rows. `make verify` 104 passed.
 Runs now report recall@20 (a reranker's ceiling): BM25 0.553 vs 0.456 at 10.
-**Next:** hybrid's recall@20 and the 4B rows (VM); a reranker only if hybrid has headroom
-between recall@10 and recall@20 (Yi chooses which); then close S2 and start S3.
+**4B rows (VM, 2026-10-17):** dense-809-4b recall@10 0.380 (+0.104 over 0.6B, CI clears
+0); hybrid-4b recall@10 0.604, recall@20 0.761, MRR 0.363 (best first stage; +0.055 /
++0.079 / +0.061 over hybrid). Headroom between recall@10 and @20, so Yi chose a Claude
+Haiku 5.5 reranker: built (`--rerank haiku`, listwise top 20, cached replies, trials,
+cost in the summary). `make verify` 113 passed.
+**Next:** Yi runs hybrid-4b + rerank on dev (paid, about $0.1) and a second trial for
+noise; then choose the S4 retrieval config, close S2, start S3.

@@ -6,6 +6,8 @@ yfr retrieval --retriever bm25          dev table for one retriever (no LLM, no 
 yfr retrieval --retriever course-dense  needs Ollama and `make course-index` (S1b)
 yfr retrieval --retriever hybrid        RRF over BM25 + dense-809 (S2); --embed-model picks
                                         the Qwen3-Embedding size for dense-809 and hybrid
+yfr retrieval --retriever hybrid --embed-model qwen3-embedding:4b --rerank haiku
+                                        reorders the top 20 with Claude Haiku (costs money)
 yfr compare RUN_A RUN_B                 paired per-case comparison of two runs
 """
 
@@ -15,7 +17,7 @@ import argparse
 import json
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -34,10 +36,13 @@ from yifinance_rag.embed.ollama import (
     EmbedError,
     OllamaEmbedder,
 )
+from yifinance_rag.llm.anthropic_provider import AnthropicProvider
+from yifinance_rag.llm.types import LLMError, LLMProvider
 from yifinance_rag.retrieval.compare import compare, load_run, render
 from yifinance_rag.retrieval.dense import course_db_url, course_dense, dense_809, model_suffix
 from yifinance_rag.retrieval.evaluate import KS, CaseResult, evaluate, render_table, summarize
 from yifinance_rag.retrieval.hybrid import RRFRetriever
+from yifinance_rag.retrieval.rerank import LLMReranker
 from yifinance_rag.retrieval.retrievers import (
     BM25Retriever,
     OracleRetriever,
@@ -93,6 +98,26 @@ def default_embedder(settings: Settings, model: str = COURSE_MODEL) -> Embedder:
     )
 
 
+RERANK_MODELS = {"haiku": "claude-haiku-5-5"}
+
+
+def default_provider(settings: Settings, model: str) -> Callable[[], LLMProvider]:
+    key = settings.anthropic_api_key.get_secret_value() if settings.anthropic_api_key else None
+
+    def make() -> LLMProvider:
+        # effort low: a ranking judgment, not a hard problem; no cache: every prompt is new
+        return AnthropicProvider(
+            model=model,
+            max_tokens=8000,
+            effort="low",
+            refusal_fallback=False,
+            api_key=key,
+            prompt_cache=False,
+        )
+
+    return make
+
+
 def recall_ceiling(results: Sequence[CaseResult], reachable: set[str]) -> float:
     """Mean recall a perfect ranker over this index could reach: gold chunks that no
     index chunk maps to can never be retrieved."""
@@ -136,6 +161,23 @@ def cmd_retrieval(
     else:
         retriever = OracleRetriever(chunks, labels, shift=int(args.retriever == "wrong-oracle"))
 
+    reranker: LLMReranker | None = None
+    if args.rerank != "none":
+        if args.retriever in ("oracle", "wrong-oracle", "random"):
+            print(f"--rerank needs a real first stage, not {args.retriever}")
+            return 2
+        model = RERANK_MODELS[args.rerank]
+        reranker = LLMReranker(
+            retriever,
+            default_provider(settings, model),
+            model=model,
+            effort="low",
+            cache_path=cache_dir(settings) / "rerank.sqlite",
+            depth=args.rerank_depth,
+            trial=args.trial,
+        )
+        retriever = reranker
+
     emap = EvidenceMap(chunks)
     results, skipped = evaluate(retriever, picked, labels, emap, k=max(KS))
     rows = summarize(results)
@@ -167,6 +209,7 @@ def cmd_retrieval(
         "depth": max(KS),  # hits kept per case; metrics at k > depth are not defined
         "recall_ceiling": recall_ceiling(results, reachable),
         "embeddings_computed": getattr(embedder, "computed", None),
+        "rerank": reranker.stats.__dict__ if reranker else None,
         "git_commit": _git_commit(),
         "created": stamp,
     }
@@ -183,6 +226,13 @@ def cmd_retrieval(
     )
     print(table)
     print(f"recall ceiling of this index: {summary['recall_ceiling']:.3f}")
+    if reranker:
+        st = reranker.stats
+        cost = "unknown" if st.cost_usd is None else f"${st.cost_usd:.4f}"
+        print(
+            f"rerank: {st.calls} calls, {st.cached} cached, {st.fallbacks} fallbacks, "
+            f"{st.input_tokens} in / {st.output_tokens} out tokens, {cost}"
+        )
     print(f"\nwritten to {out}")
     return 0
 
@@ -227,6 +277,9 @@ def build_parser() -> argparse.ArgumentParser:
     ret.add_argument("--embed-model", choices=sorted(EMBED_MODELS), default=COURSE_MODEL)
     ret.add_argument("--rrf-k", type=int, default=60, help="RRF constant (paper value)")
     ret.add_argument("--depth", type=int, default=100, help="hits fused per retriever")
+    ret.add_argument("--rerank", choices=["none", *RERANK_MODELS], default="none")
+    ret.add_argument("--rerank-depth", type=int, default=20, help="first-stage hits reranked")
+    ret.add_argument("--trial", type=int, default=0, help="rerank again (variance), not cached")
     ret.add_argument(
         "--user-facts",
         action="store_true",
@@ -259,7 +312,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ConfigError, DataError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
-    except (EmbedError, psycopg.Error) as e:
+    except (EmbedError, psycopg.Error, LLMError) as e:
         # an infra failure: the run stops and writes no scores
         print(f"infra error, no scores written: {e}", file=sys.stderr)
         return 3

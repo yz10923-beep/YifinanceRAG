@@ -268,6 +268,26 @@ Built (code, 2026-10-16; `make verify` 100 passed):
   simple_retrieval, where BM25 is already strong, loses a little (-0.07, 1/2/11).
 - Hybrid is now the S2 baseline to beat; each next variant is compared with it.
 
+**The 4B rows (VM, 2026-10-17, commit `3fde484`;** tables in `s2_dev_paired.md`):
+
+| dev (60) | recall@10 | recall@20 | complete@10 | MRR@10 |
+|---|---:|---:|---:|---:|
+| dense-809 (0.6B) | 0.276 | n/a | 0.117 | 0.222 |
+| dense-809-4b | 0.380 | n/a | 0.200 | 0.273 |
+| hybrid (BM25 + 0.6B) | 0.549 | 0.682 | 0.367 | 0.302 |
+| **hybrid-4b (BM25 + 4B)** | **0.604** | **0.761** | **0.433** | **0.363** |
+
+- Model size matters for dense alone: 4B vs 0.6B recall@10 +0.104 (13/4/43, CI
+  [+0.033, +0.182]). Answer to "is the 0.6B model the problem?": partly; even 4B dense
+  stays below BM25 (0.380 vs 0.456).
+- Inside hybrid the gain shrinks: recall@10 +0.055 (CI [-0.024, +0.137]); recall@20
+  +0.079 (CI [+0.022, +0.142]) and MRR +0.061 (CI [+0.006, +0.120]) do clear 0.
+- hybrid-4b is the best first stage. Its gap between recall@20 (0.761) and recall@10
+  (0.604) is headroom a reranker can use, so the reranker rule below is met.
+- Cost to remember for S4: hybrid-4b needs the 4B model to embed every new agent query
+  live (about 3 GB of RAM next to ES on the VM). Dev queries are cached; live agent
+  queries are not. Decide at S4 between 4B live, 0.6B live, or BM25-only for the agent.
+
 **How much would asking the user help retrieval? (2026-10-17, container, BM25)**
 `--user-facts` appends every fact the simulated user would reveal to the 36 dev
 progressive-disclosure openers (an upper bound, grader-side, like the oracle; runs and
@@ -286,6 +306,16 @@ tables in `evals/records/retrieval/`, `s2_user_facts_upper_bound.md`):
 - What it means: the biggest remaining retrieval lever for 60% of the questions is the
   agent asking for the missing facts (S4), not another retriever variant. That argues for
   closing S2 soon. Upper bound only: a real agent asks for some facts, not all.
+
+**Reranker (Yi chose Claude Haiku 5.5, 2026-10-17).** Built: `--rerank haiku` reorders
+the first stage's top 20 in one listwise call per question (passages numbered, trimmed
+to 1,000 characters; the reply is a JSON array of all 20 numbers). Effort `low`, no
+prompt caching (each prompt is new; a cache write would cost 1.25x), no tools field.
+Unusable replies keep the first-stage order and are counted (`fallbacks`); replies are
+cached on disk by (model, effort, prompt, trial), so reruns are free, and `--trial 1`
+asks again to measure run-to-run noise (Haiku 5.5 takes no fixed temperature). Tokens
+and dollars go into the run summary. Condition: hybrid-4b + rerank vs hybrid-4b; recall@20
+cannot change by design, MRR and recall@5/10 can.
 
 Recommended rest of S2 (time box: about 2 more days, then S3):
 1. Finish the 4B rows (running on the VM).
