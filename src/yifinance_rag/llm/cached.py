@@ -33,6 +33,15 @@ class CallStats:
     cost_usd: float | None = 0.0  # None once any price is unknown, never $0
 
 
+@dataclass(frozen=True)
+class Reply:
+    text: str
+    input_tokens: int  # uncached input of the call that produced it
+    output_tokens: int
+    cached: bool
+    cost_usd: float | None = None  # what this call cost now; None if cached or unknown
+
+
 class CachedCaller:
     def __init__(
         self,
@@ -61,17 +70,24 @@ class CachedCaller:
 
     def ask(self, prompt: str) -> str:
         """The model's reply text ("" for a refusal), from the cache when it has one."""
+        return self.ask_full(prompt).text
+
+    def ask_full(self, prompt: str) -> Reply:
+        """The reply with this call's usage; a cached reply carries the usage it cost."""
         key = sha256_text(json.dumps([self.model, self.effort, self.system, prompt, self.trial]))
-        row = self.db.execute("SELECT text FROM replies WHERE key = ?", (key,)).fetchone()
+        row = self.db.execute(
+            "SELECT text, input_tokens, output_tokens FROM replies WHERE key = ?", (key,)
+        ).fetchone()
         if row is not None:
             self.stats.cached += 1
-            return str(row[0])
+            return Reply(str(row[0]), int(row[1]), int(row[2]), cached=True)
         response = self._loop.run_until_complete(self._call(prompt))
         self.stats.calls += 1
         usage = response.usage
-        self.stats.input_tokens += (
+        total_in = (
             usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens
         )
+        self.stats.input_tokens += total_in
         self.stats.output_tokens += usage.output_tokens
         cost = cost_usd(response.model or self.model, usage.model_dump())
         if cost is None or self.stats.cost_usd is None:
@@ -84,7 +100,7 @@ class CachedCaller:
                 "INSERT OR REPLACE INTO replies VALUES (?, ?, ?, ?)",
                 (key, text, usage.input_tokens, usage.output_tokens),
             )
-        return text
+        return Reply(text, usage.input_tokens, usage.output_tokens, cached=False, cost_usd=cost)
 
     async def _call(self, prompt: str) -> LLMResponse:
         if self._provider is None:

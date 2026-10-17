@@ -14,6 +14,10 @@ yfr grade --system oracle|null|wrong|rule-only|verbose-null
                                         grade a baseline; verbose-null takes the retrieval
                                         flags (default bm25)
 yfr grade --records FILE --name NAME    grade a system's answer records
+yfr answer --system onecall [retrieval flags]
+                                        the one-call RAG baseline on deepseek-v4-flash (paid)
+yfr label-sheet RUN                     a blind label sheet for a run's dev answers
+yfr agree LABELS.tsv RUN [RUN ...]      judge verdicts vs Yi's labels (Cohen's kappa)
 yfr grade ... --judge haiku|sonnet      add the LLM judge's verdicts (costs money); with
                                         --selftest, the judge's own checks
 """
@@ -30,6 +34,7 @@ from pathlib import Path
 
 import psycopg
 
+from yifinance_rag.answer import onecall
 from yifinance_rag.config import REPO_ROOT, ConfigError, Settings, cache_dir, load_settings
 from yifinance_rag.data.benchmark import (
     Label,
@@ -57,6 +62,8 @@ from yifinance_rag.embed.ollama import (
     OllamaEmbedder,
 )
 from yifinance_rag.grade.baselines import SYSTEMS, build
+from yifinance_rag.grade.calibrate import agreement, read_labels, write_label_sheet
+from yifinance_rag.grade.calibrate import render as render_agreement
 from yifinance_rag.grade.graders import Context
 from yifinance_rag.grade.judge import JUDGE_MODELS, Judge
 from yifinance_rag.grade.record import AnswerRecord, read_records, write_records
@@ -65,6 +72,8 @@ from yifinance_rag.grade.report import render_table as render_grades
 from yifinance_rag.grade.report import summarize as summarize_grades
 from yifinance_rag.grade.truth import Truth, load_truths
 from yifinance_rag.llm.anthropic_provider import AnthropicProvider
+from yifinance_rag.llm.cached import CachedCaller, CallStats
+from yifinance_rag.llm.openai_compat import OpenAICompatProvider
 from yifinance_rag.llm.types import LLMError, LLMProvider
 from yifinance_rag.retrieval.compare import compare, load_run, render
 from yifinance_rag.retrieval.dense import course_db_url, course_dense, dense_809, model_suffix
@@ -501,6 +510,153 @@ def _grade_selftest(
     return 1 if problems else 0
 
 
+CHAT_MODEL = "deepseek-v4-flash"
+# The course's own request options (backend/configs/local.toml): thinking off, 4096 tokens.
+CHAT_OPTIONS: dict[str, object] = {"thinking": {"type": "disabled"}}
+
+
+def default_chat(settings: Settings) -> Callable[[], LLMProvider]:
+    if settings.deepseek_api_key is None:
+        raise ConfigError("no DEEPSEEK_API_KEY: set it in ~/.yfr/.env (never in the repo)")
+    key = settings.deepseek_api_key.get_secret_value()
+
+    def make() -> LLMProvider:
+        return OpenAICompatProvider(
+            model=CHAT_MODEL,
+            api_key=key,
+            base_url=settings.deepseek_url,
+            max_tokens=4096,
+            extra=CHAT_OPTIONS,
+        )
+
+    return make
+
+
+def cmd_answer(
+    ds: Dataset,
+    settings: Settings,
+    args: argparse.Namespace,
+    embedder: Embedder | None = None,
+    chat: Callable[[], LLMProvider] | None = None,
+) -> int:
+    """Run a system that answers questions and write its answer records; grading is a
+    separate command, so the system's code never touches labels or graders."""
+    if args.split == "test" and not args.final:
+        print("the test split is for a stage's final report only; Yi passes --final")
+        return 2
+    chunks = benchmark_chunks(load_docs(ds))
+    questions, labels = load_benchmark(ds)
+    picked = select(questions, labels, args.split)
+    try:
+        retriever, reranker, embedder = build_retriever(args, settings, chunks, labels, embedder)
+    except ValueError as e:
+        print(e)
+        return 2
+    if args.retriever in ("oracle", "wrong-oracle"):
+        print("a system can't retrieve with an oracle: it reads the labels")
+        return 2
+    stats = CallStats()
+    caller = CachedCaller(
+        chat or default_chat(settings),
+        model=CHAT_MODEL,
+        effort=json.dumps(CHAT_OPTIONS, sort_keys=True),
+        system=onecall.SYSTEM,
+        cache_path=cache_dir(settings) / "answers.sqlite",
+        stats=stats,
+        trial=args.answer_trial,
+    )
+    system = onecall.OneCall(retriever, caller, EvidenceMap(chunks))
+    out = _run_dir(Path(args.out), f"{system.name}_{args.split}")
+    records: list[AnswerRecord] = []
+    try:
+        for n, q in enumerate(picked, start=1):
+            try:
+                records.append(system.answer(q))
+            except LLMError as e:
+                # an infra failure: recorded, the run stops, no partial scores; answers so
+                # far are cached, so a rerun resumes without paying again
+                row = {"case_id": q.case_id, "kind": e.kind, "status": e.status, "error": str(e)}
+                (out / "errors.jsonl").write_text(json.dumps(row) + "\n")
+                raise
+            if n % 10 == 0:
+                print(f"  {n}/{len(picked)} answered", file=sys.stderr)
+    finally:
+        caller.close()
+        if reranker:
+            reranker.close()
+    write_records(out / "records.jsonl", records)
+    summary = {
+        "system": system.name,
+        "config": system.config(),
+        "split": args.split,
+        "cases": len(records),
+        "chat": stats.__dict__,
+        "rerank": reranker.stats.__dict__ if reranker else None,
+        "release_manifest_sha256": sha256_file(ds.path(RELEASE_MANIFEST)),
+        "split_sha256": split_hash(labels.values()),
+        "git_commit": _git_commit(),
+        "created": out.name.split("_", 1)[0],
+    }
+    (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+    cost = (
+        "unknown (no DeepSeek price recorded)"
+        if stats.cost_usd is None
+        else f"${stats.cost_usd:.4f}"
+    )
+    print(
+        f"{system.name} on {args.split}: {len(records)} answers; chat {stats.calls} calls, "
+        f"{stats.cached} cached, {stats.input_tokens} in / {stats.output_tokens} out tokens, {cost}"
+    )
+    print(
+        f"written to {out}\ngrade: uv run yfr grade --records {out / 'records.jsonl'} "
+        f"--name {system.name} --judge haiku"
+    )
+    return 0
+
+
+def cmd_label_sheet(ds: Dataset, args: argparse.Namespace) -> int:
+    run = Path(args.run)
+    questions, labels = load_benchmark(ds)
+    records = read_records(run / "records.jsonl")
+    if any(labels[r.case_id].split != "dev" for r in records):
+        print("label sheets are for dev answers only (calibration is tuning)")
+        return 2
+    truths = load_truths(ds, labels)
+    texts = {q.case_id: q.text for q in questions}
+    n = write_label_sheet(records, truths, texts, run / "labels.md", run / "labels.tsv")
+    print(
+        f"{len(records)} answers, {n} items to label\nread: {run / 'labels.md'}\n"
+        f"label (y/n, blind to the judge): {run / 'labels.tsv'}"
+    )
+    return 0
+
+
+def cmd_agree(args: argparse.Namespace) -> int:
+    labels = read_labels(Path(args.labels))
+    print(f"{len(labels)} labelled items in {args.labels}\n")
+    for run in map(Path, args.runs):
+        summary = json.loads((run / "summary.json").read_text(encoding="utf-8"))
+        judge = summary.get("judge") or {}
+        if not judge:
+            print(f"{run}: not a judged run (grade it with --judge)")
+            return 1
+        cases = [
+            json.loads(x)
+            for x in (run / "cases.jsonl").read_text(encoding="utf-8").splitlines()
+            if x.strip()
+        ]
+        result = agreement(labels, cases)
+        name = f"{judge.get('model')} (trial {judge.get('trial', 0)})"
+        (run / "agreement.json").write_text(
+            json.dumps(
+                {"labels": str(args.labels), "judge": judge, **result}, ensure_ascii=False, indent=2
+            )
+            + "\n"
+        )
+        print(render_agreement(name, result) + "\n")
+    return 0
+
+
 def _label(summary: dict[str, object]) -> str:
     facts = "" if summary.get("query", "opener") == "opener" else "+facts"
     return f"{summary['retriever']}{facts}"
@@ -553,6 +709,17 @@ def build_parser() -> argparse.ArgumentParser:
     grd.add_argument("--judge-trial", type=int, default=0, help="judge again (variance)")
     add_retriever_args(grd)
     grd.add_argument("--out", default=str(REPO_ROOT / "evals" / "results" / "grade"))
+    ans = sub.add_parser("answer", help="run a system and write its answer records (paid)")
+    ans.add_argument("--system", choices=["onecall"], default="onecall")
+    ans.add_argument("--retriever", choices=RETRIEVERS, default="bm25")
+    add_retriever_args(ans)
+    ans.add_argument("--answer-trial", type=int, default=0, help="answer again (variance)")
+    ans.add_argument("--out", default=str(REPO_ROOT / "evals" / "results" / "answers"))
+    lab = sub.add_parser("label-sheet", help="write a blind label sheet for a run's answers")
+    lab.add_argument("run", help="a run directory with records.jsonl")
+    agr = sub.add_parser("agree", help="judge vs Yi's labels: agreement and Cohen's kappa")
+    agr.add_argument("labels", help="a filled labels.tsv")
+    agr.add_argument("runs", nargs="+", help="judged grade runs of the same records")
     cmp = sub.add_parser("compare", help="paired comparison of two runs (B against A)")
     cmp.add_argument("run_a", type=Path)
     cmp.add_argument("run_b", type=Path)
@@ -579,6 +746,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "compare":
         return cmd_compare(args)
+    if args.command == "agree":
+        try:
+            return cmd_agree(args)
+        except DataError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
     try:
         settings = load_settings()
         ds = Dataset.from_settings(settings)
@@ -592,6 +765,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_data_check(ds)
         if args.command == "grade":
             return cmd_grade(ds, settings, args)
+        if args.command == "answer":
+            return cmd_answer(ds, settings, args)
+        if args.command == "label-sheet":
+            return cmd_label_sheet(ds, args)
         return cmd_retrieval(ds, settings, args)
     except (ConfigError, DataError) as e:
         print(f"error: {e}", file=sys.stderr)

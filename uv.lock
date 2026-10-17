@@ -534,6 +534,7 @@ version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "httpx2" },
     { name = "jieba" },
     { name = "numpy" },
     { name = "psycopg", extra = ["binary"] },
@@ -553,6 +554,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.60" },
+    { name = "httpx2", specifier = ">=2.13.1" },
     { name = "jieba", specifier = ">=0.42.1" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },

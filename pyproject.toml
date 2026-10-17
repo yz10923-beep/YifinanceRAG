@@ -9,6 +9,7 @@ description = "A measured RAG + agent support assistant for the FlowPay payments
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "anthropic>=0.60",
+    "httpx2>=2.13.1",
     "jieba>=0.42.1",
     "numpy>=2.5.4",
     "psycopg[binary]>=3.2",

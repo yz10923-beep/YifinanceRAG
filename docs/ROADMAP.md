@@ -411,7 +411,7 @@ goes to stderr, and the Ollama request timeout is 600 s. Tested (`make verify` 1
 **Done when** every grader passes its oracle/null/wrong checks and the judge's agreement
 with Yi's labels is reported.
 
-**Order for S3 (steps 1-4 done, step 5 built 2026-10-17; see below):**
+**Order for S3 (steps 1-5 done, step 6 built 2026-10-17; see below):**
 1. ~~Read before writing graders~~: done, see "S3 step 1" below.
 2. An answer record format (answer text, cited evidence ids, tool calls with their
    observed evidence ids, clarification turns) that the graders read and the S4 agent
@@ -675,6 +675,40 @@ calls. Sonnet 5.5: oracle 0.950 (misses only on progressive questions), forbidde
   **Fixed:** quotes compare after NFKC normalization; the verdict is the last JSON object
   in the reply that has a verdict section. Neither changes a prompt or a threshold, so
   both judges are re-scored from their cached replies at no cost.
+
+### S3 step 6 (2026-10-17): DeepSeek provider, one-call baseline, calibration tools
+
+Built (container; the paid runs and the labels are Yi's):
+- **`llm/openai_compat.py`**: an OpenAI-compatible Chat Completions provider over
+  httpx2 (no vendor SDK). Translates our Anthropic-format history both ways, tool calls
+  included (S4 needs them); usage maps cache hits apart (`input_tokens` = uncached, as in
+  the Anthropic API); HTTP errors classified like the Anthropic provider's (429 / 5xx
+  retryable, 402 billing, 400 "context length" = context_overflow). Settings:
+  `DEEPSEEK_API_KEY` (in `~/.yfr/.env`), `YFR_DEEPSEEK_URL`.
+- **Chat config = the course's** (`backend/configs/local.toml`): `deepseek-v4-flash` at
+  `https://api.deepseek.com`, `thinking: disabled`, `max_tokens` 4096. Price: **unknown
+  (None)**: DeepSeek's docs were unreachable from the container; tokens are recorded,
+  so cost is computable once Yi reads the live price into `llm/pricing.py`.
+- **`answer/onecall.py`** (`yfr answer --system onecall`): the S2 retrieval top 10 for
+  the opener, one chat call, no tools, no asking. The model sees the opener and passages
+  numbered [1]..[10] with doc title and heading, never chunk ids; it cites by number and
+  the harness maps citations to evidence ids. Replies cached (`answers.sqlite`); an API
+  failure writes `errors.jsonl` and stops the run (no partial scores; a rerun resumes from
+  the cache). Answering and grading are separate commands. Dev prompts: 60, ~137k
+  characters in all. A dataset test checks every question's prompt carries no evidence
+  id, question id or scenario name.
+- **Calibration** (`grade/calibrate.py`): `yfr label-sheet RUN` writes `labels.md` (the
+  texts; never committed) and `labels.tsv` (case id, item, empty label: y/n; committable),
+  dev only, blind to the judge. `yfr agree labels.tsv RUN...` gives agreement and Cohen's
+  kappa per item kind (required / forbidden), over all items and at the task level, plus
+  the disagreements, for each judged run.
+- The reranker, judge and one-call share `llm/cached.py`, which now also returns each
+  call's usage (records carry tokens per answer).
+
+Decision rule for the judge (from "Decided: the models", made concrete before the
+labels exist): compare kappa over all items; keep Haiku unless Sonnet's kappa is higher
+by more than the gap between two Haiku trials (`--judge-trial 1` on the same records).
+Report kappa per kind and at the task level either way.
 
 ## S4 agent
 

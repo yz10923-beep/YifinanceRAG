@@ -243,13 +243,18 @@ uv run yfr grade --selftest      # every grader vs the no-LLM baselines (S3)
 uv run yfr grade --system oracle|null|wrong|rule-only|verbose-null [retrieval flags]
 uv run yfr grade --records FILE --name NAME   # grade a system's answer records
 uv run yfr grade ... --judge haiku|sonnet [--judge-trial N]   # + LLM judge (paid, cached)
+uv run yfr answer --system onecall [retrieval flags]   # deepseek-v4-flash, paid, cached
+uv run yfr label-sheet RUN       # blind labels.md + labels.tsv for a run's dev answers
+uv run yfr agree LABELS.tsv RUN [RUN ...]   # judge vs Yi's labels: agreement, kappa
 ```
 
 Layout: `src/yifinance_rag/data/` (dataset files and hashes, corpus + `EvidenceMap`,
 benchmark `Question` vs `Label`, pins, `check_dataset`), `src/yifinance_rag/retrieval/`
 (tokenizer, BM25, retrievers, metrics, `dense.py`), `src/yifinance_rag/grade/` (answer
 record, grader-side `Truth`, deterministic graders, instance-fact atoms, the course scorer
-port, no-LLM baselines, selftest), `src/yifinance_rag/embed/` (Ollama
+port, no-LLM baselines, selftest, judge, calibration), `src/yifinance_rag/answer/` (systems
+that answer: `onecall.py`), `src/yifinance_rag/llm/` (Anthropic and OpenAI-compatible
+providers, `cached.py`, pricing, retry), `src/yifinance_rag/embed/` (Ollama
 client pinned to the course's model digest, SQLite embedding cache),
 `src/yifinance_rag/cli.py` (`yfr`), `tests/synthetic.py` (a tiny dataset in the real
 layout; `graded=True` writes a second question set with selectors and trajectories) and `tests/fake_ollama.py` (a local HTTP stand-in), both for `make verify`.
@@ -379,16 +384,22 @@ before the first run (ROADMAP "S3 step 5"). `make verify` 136 passed, `make data
 **Judged selftest on dev (VM, 2026-10-17): both pass every threshold.** Haiku: oracle
 1.000, 0 incomplete, 0 unverified, $0.069; Sonnet: oracle 0.950, 9 incomplete, 18
 unverified quotes, $1.14. Verbose-null judge_task 0.367 / 0.308 vs course 0.567.
-Sonnet's misses are being diagnosed from cached replies; the judge is chosen in step 6.
+Sonnet's misses were our checks (ASCII punctuation in quotes, a corrected second JSON):
+fixed (NFKC quotes, last JSON verdict); re-scoring from the cache is Yi's (free).
 
-## Next session: start here (S3 step 5's paid selftest, then step 6)
-1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3" (order, model
-   decisions, step 1 findings, steps 2-4). Graders before the agent, as in yiagent.
+**S3 step 6 built** (2026-10-17, container): OpenAI-compatible provider (httpx2) with
+the course's chat config (`deepseek-v4-flash`, thinking disabled, 4096 tokens; price
+unknown = None until Yi reads it), the one-call baseline (`yfr answer`), blind label
+sheets and agreement (`yfr label-sheet`, `yfr agree`). `make verify` 153 passed,
+`make data-test` 5 passed (incl. a no-ids check on every one-call prompt).
+
+## Next session: start here (S3 step 6: Yi's runs and labels)
+1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3", steps 5 and 6.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo).
-3. Step 5: if Yi has sent the judged selftest output (Haiku and Sonnet), record it in
-   ROADMAP "S3 step 5"; a failed threshold means fixing the prompt, then a rerun.
-4. Step 6: the OpenAI-compatible provider for `deepseek-v4-flash`, then the one-call RAG
-   baseline writing answer records (Yi runs it), ~50 dev answers Yi labels, agreement.
+3. Record what Yi sends: the cached re-score of both judged selftests (step 5), the
+   one-call dev run (both judges' tables), and `yfr agree` output once labelled.
+4. Apply the judge decision rule (ROADMAP step 6), record the chosen judge, close S3
+   (ROADMAP results, interview line, Status), then S4.
 5. S3 is a gate, not a step to compress: no S4 agent variant is compared before its
    graders pass their oracle / null / wrong checks, or S4's A/Bs (tool shape,
    `disputed()`, budgets, ask-user) would be chosen by reading outputs. The time box

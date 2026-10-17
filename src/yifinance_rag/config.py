@@ -24,6 +24,7 @@ ENV_PREFIX = "YFR_"
 # Read without the prefix: the key's usual name, and the dataset root named in CLAUDE.md.
 _UNPREFIXED = {
     "ANTHROPIC_API_KEY": "anthropic_api_key",
+    "DEEPSEEK_API_KEY": "deepseek_api_key",
     "FLOWPAY_DATASET_ROOT": "dataset_root",
 }
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -35,6 +36,9 @@ class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
     anthropic_api_key: SecretStr | None = None
+    # The chat model's API (deepseek-v4-flash, the course's model); OpenAI-compatible.
+    deepseek_api_key: SecretStr | None = None
+    deepseek_url: str = "https://api.deepseek.com"
     dataset_root: Path | None = None
     # The local pgvector from docker-compose.yml. A secret: it carries the password.
     pg_url: SecretStr = SecretStr("postgresql://flowpay:flowpay@127.0.0.1:5432/flowpay")

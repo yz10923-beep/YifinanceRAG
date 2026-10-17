@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
+from yifinance_rag.answer import onecall
 from yifinance_rag.data import pins
 from yifinance_rag.data.benchmark import Question, leaks, load_benchmark, select
 from yifinance_rag.data.check import check_dataset
@@ -13,6 +16,7 @@ from yifinance_rag.grade.baselines import build
 from yifinance_rag.grade.graders import Context
 from yifinance_rag.grade.report import Graded, grade_all, selftest
 from yifinance_rag.grade.truth import load_truths
+from yifinance_rag.retrieval.retrievers import BM25Retriever
 
 pytestmark = pytest.mark.dataset
 
@@ -54,3 +58,15 @@ def test_graders_pass_their_selftest_on_every_real_question(ds: Dataset) -> None
     # ROADMAP S3 step 1, finding 8: the course scorer passes every rule-only answer.
     rule = [g for g in by_system["rule-only"] if g.truth.dynamic]
     assert len(rule) == 180 and all(g.course.task_pass for g in rule)
+
+
+def test_onecall_prompts_carry_no_ids_or_labels(ds: Dataset) -> None:
+    """What the one-call system would send for every question (BM25, no API call): the
+    opener and numbered passages, with no evidence ids, question ids or scenario names."""
+    questions, labels = load_benchmark(ds)
+    chunks = benchmark_chunks(load_docs(ds))
+    bm25 = BM25Retriever(chunks)
+    pattern = re.compile(r"(?:doc|sql|runtime|negative):|FP-BM-|SC-\d{3}|SF-\d{3}")
+    for q in questions:
+        prompt = onecall.render_prompt(q, bm25.search(q, 10), 3000)
+        assert not pattern.search(prompt), (labels[q.case_id].question_id, pattern.findall(prompt))
