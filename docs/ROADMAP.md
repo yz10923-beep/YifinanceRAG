@@ -654,6 +654,20 @@ Run (Yi, VM, paid): `yfr grade --selftest --judge haiku` and `--judge sonnet`, w
 S2 retrieval flags for verbose-null. Estimate from prompt sizes (360 prompts, ~720k
 characters on dev): Haiku ~$0.10, Sonnet ~$2; the run prints the measured cost.
 
+**Judged selftest on dev (VM, 2026-10-17): both judges pass every threshold**
+(`evals/records/grade/s3_judge_selftest_dev.md`). Haiku 5.5: oracle judge_task 1.000, null
+0, wrong 0, forbidden caught on 60/60, 0 incomplete, 0 unverified quotes, $0.069 for 336
+calls. Sonnet 5.5: oracle 0.950 (misses only on progressive questions), forbidden_clear
+0.050, 9 incomplete replies, 18 unverified quotes, $1.14 (16x Haiku).
+- The judge rates pasted chunks (verbose-null, S2 config) far lower than the course
+  scorer: judge_task 0.367 (Haiku) / 0.308 (Sonnet) vs course_task 0.567; on progressive
+  questions 0.167 / 0.206 vs 0.444.
+- Not yet a verdict on which judge is better: these baselines are easy (the oracle is the
+  dataset's own answer), and Sonnet's misses may be our checks rather than its judgment
+  (quotes that don't match the answer verbatim, replies the parser rejects). Diagnose
+  from the cached replies (case rows now keep each raw reply), then decide by agreement
+  with Yi's labels on real answers (step 6), as decided.
+
 ## S4 agent
 
 Own loop over the vendored provider, answering with `deepseek-v4-flash` through the

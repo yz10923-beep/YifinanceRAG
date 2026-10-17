@@ -376,7 +376,10 @@ top 10 pasted, no LLM) passes the course task 0.433 (53% on all 300), instance f
 per-assertion JSON verdicts with verbatim quotes checked against the answer, incomplete
 replies scored None, cached replies and trials, a `forbidden` baseline, thresholds fixed
 before the first run (ROADMAP "S3 step 5"). `make verify` 136 passed, `make data-test` 4.
-Its paid selftest on dev is Yi's to run (Haiku ~$0.10, Sonnet ~$2 estimated).
+**Judged selftest on dev (VM, 2026-10-17): both pass every threshold.** Haiku: oracle
+1.000, 0 incomplete, 0 unverified, $0.069; Sonnet: oracle 0.950, 9 incomplete, 18
+unverified quotes, $1.14. Verbose-null judge_task 0.367 / 0.308 vs course 0.567.
+Sonnet's misses are being diagnosed from cached replies; the judge is chosen in step 6.
 
 ## Next session: start here (S3 step 5's paid selftest, then step 6)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3" (order, model

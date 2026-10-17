@@ -130,7 +130,8 @@ def test_judge_caches_counts_and_asks_again_on_a_new_trial(tmp_path: Path) -> No
         )
 
     first = make(0)
-    assert first.judge("问题", t, record).scores()["judge_assertions"] == 0.5
+    v = first.judge("问题", t, record)
+    assert v.scores()["judge_assertions"] == 0.5 and v.reply == reply  # kept for reading misses
     again = make(0)
     again.judge("问题", t, record)
     assert again.stats.cached == 1 and again.stats.calls == 0

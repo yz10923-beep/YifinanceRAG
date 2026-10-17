@@ -78,6 +78,7 @@ class Verdicts:
     forbidden: dict[str, bool | None]
     unverified: list[str] = field(default_factory=list)  # positive verdicts with no real quote
     parsed: bool = True
+    reply: str = ""  # the judge's raw text, kept in cases.jsonl to read its misses
 
     @property
     def complete(self) -> bool:
@@ -175,6 +176,7 @@ class Judge:
     def judge(self, question: str, truth: Truth, record: AnswerRecord) -> Verdicts:
         reply = self.caller.ask(render_prompt(question, truth, record.answer))
         verdicts = parse_verdicts(reply, truth, record.answer)
+        verdicts.reply = reply
         if not verdicts.complete:
             self.stats.unparsed += 1
         self.stats.unverified += len(verdicts.unverified)
