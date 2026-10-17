@@ -122,7 +122,7 @@ def test_cases_without_doc_evidence_are_counted_not_scored(tmp_path: Path) -> No
     assert skipped == 1 and len(results) == 3
     rows = summarize(results)
     assert [r["type"] for r in rows] == ["simple_retrieval", "multi_document", "mode=single", "all"]
-    assert "| all | 3 | 1.000 | 1.000 | 1.000 | 1.000 |" in render_table(rows)
+    assert "| all | 3 | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |" in render_table(rows)
 
 
 def test_bm25_finds_the_synthetic_gold(tmp_path: Path) -> None:
@@ -197,3 +197,24 @@ def test_rows_and_comparisons_split_by_conversation_mode() -> None:
     assert rows["all"]["n"] == 3 and rows["multi_hop"]["recall@10"] == 1 / 3
     groups = {c.group for c in compare({"p": a, "s": b}, {"p": b, "s": a}, "recall@10")}
     assert {"mode=progressive", "mode=single", "all"} <= groups
+
+
+def test_recall_at_20_is_reported_and_never_compared_against_a_shallower_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("FLOWPAY_DATASET_ROOT", str(write_dataset(tmp_path / "flowpay-dataset")))
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / "runs"
+    assert main(["retrieval", "--retriever", "bm25", "--out", str(out)]) == 0
+    assert main(["retrieval", "--retriever", "oracle", "--out", str(out)]) == 0
+    bm25, oracle = sorted(out.iterdir(), key=lambda p: "oracle" in p.name)
+    summary = json.loads((bm25 / "summary.json").read_text())
+    assert summary["depth"] == 20 and "recall@20" in summary["rows"][-1]
+    capsys.readouterr()
+    assert main(["compare", str(bm25), str(oracle)]) == 0
+    assert "recall@20: B = oracle vs A = bm25" in capsys.readouterr().out
+    old = json.loads((oracle / "summary.json").read_text())
+    del old["depth"]  # as recorded before this change: top 10 only
+    (oracle / "summary.json").write_text(json.dumps(old))
+    assert main(["compare", str(bm25), str(oracle)]) == 0
+    assert "recall@20: skipped, a run kept only its top 10" in capsys.readouterr().out

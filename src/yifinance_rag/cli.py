@@ -164,6 +164,7 @@ def cmd_retrieval(
         "chunk_set_sha256": chunk_set_hash(chunks),
         "index_chunk_set_sha256": chunk_set_hash(index),
         "index_chunks": len(index),
+        "depth": max(KS),  # hits kept per case; metrics at k > depth are not defined
         "recall_ceiling": recall_ceiling(results, reachable),
         "embeddings_computed": getattr(embedder, "computed", None),
         "git_commit": _git_commit(),
@@ -198,7 +199,12 @@ def cmd_compare(args: argparse.Namespace) -> int:
         if summary_a.get(key) != summary_b.get(key):
             print(f"error: the runs differ in {key}; a paired comparison needs the same cases")
             return 1
-    for name in args.metric or ["recall@10", "mrr@10"]:
+    # Runs recorded before recall@20 kept only their top 10.
+    depth = min(int(str(s.get("depth", 10))) for s in (summary_a, summary_b))
+    for name in args.metric or ["recall@10", "mrr@10", "recall@20"]:
+        if int(name.partition("@")[2]) > depth:
+            print(f"{name}: skipped, a run kept only its top {depth}\n")
+            continue
         rows = compare(a, b, name)
         print(render(rows, _label(summary_a), _label(summary_b), name))
         print()

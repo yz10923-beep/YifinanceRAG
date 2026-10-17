@@ -17,7 +17,10 @@ from yifinance_rag.data.benchmark import TYPES, Label, Question
 from yifinance_rag.data.corpus import EvidenceMap
 from yifinance_rag.retrieval.retrievers import Retriever
 
-KS = (5, 10)
+# recall@k for these k; the run keeps the top max(KS). recall@20 is the ceiling of any
+# reranker over the top 20. complete@ and mrr@ stay at 10, the agent's reading budget.
+KS = (5, 10, 20)
+HEAD_K = 10
 # Conversation modes, reported as extra rows next to the question types.
 MODES = {"progressive_disclosure": "mode=progressive", "single_turn_complete": "mode=single"}
 
@@ -75,16 +78,14 @@ def evaluate(
 
 
 def metric_names(ks: Sequence[int] = KS) -> list[str]:
-    kmax = max(ks)
-    return [*(f"recall@{k}" for k in ks), f"complete@{kmax}", f"mrr@{kmax}"]
+    return [*(f"recall@{k}" for k in ks), f"complete@{HEAD_K}", f"mrr@{HEAD_K}"]
 
 
 def _means(results: Sequence[CaseResult], ks: Sequence[int]) -> dict[str, float]:
-    kmax = max(ks)
     n = len(results)
     out = {f"recall@{k}": sum(r.recall(k) for r in results) / n for k in ks}
-    out[f"complete@{kmax}"] = sum(r.complete(kmax) for r in results) / n
-    out[f"mrr@{kmax}"] = sum(r.mrr(kmax) for r in results) / n
+    out[f"complete@{HEAD_K}"] = sum(r.complete(HEAD_K) for r in results) / n
+    out[f"mrr@{HEAD_K}"] = sum(r.mrr(HEAD_K) for r in results) / n
     return out
 
 
