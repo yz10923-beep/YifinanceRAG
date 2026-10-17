@@ -132,8 +132,13 @@ The benchmark:
   `query_payments` 106, `query_accounts` 70, `query_webhooks` 58, `get_runtime_state` 137.
   The course backend uses one `search_documents` plus four SQL and three log tools.
   Which tool shape works better is an A/B question for this repo, not a given.
-- `forbidden_shortcuts` example: `support_case_as_current_fact`,
-  `current_state_used_for_historical_question`, `raw_sql_or_hidden_audit_access`.
+- `forbidden_shortcuts` is the same three values on all 300 questions (global rules, not
+  labels): `support_case_as_current_fact`, `current_state_used_for_historical_question`,
+  `raw_sql_or_hidden_audit_access`. More label facts (checked 2026-10-17): ROADMAP
+  "S3 step 1".
+- **`flowpay.sqlite` also holds the audit journal** as table `event_journal`, plus
+  `scenario_executions` (with the split); runtime rows carry `scenario_id`, which names
+  the scenario. Data tools whitelist tables and columns and strip both (ROADMAP S3 step 1).
 
 Gotchas:
 - **Gold chunk ids follow the benchmark's chunking.** The benchmark keeps a title-only
@@ -171,6 +176,9 @@ already reviewed as worth borrowing:
   split ("课程不调参"); it does not check `required_tools` because its tool names differ.
   So: report course stages only on our test split, run by Yi; add a "verbose null"
   (top-10 chunks pasted as the answer, no LLM) to S3 and score it with both graders.
+  Measured 2026-10-17 (ROADMAP S3 step 1): it never grades instance facts (a rule-only
+  answer passes all 180 dynamic questions), pasting the gold chunks passes 87/300, and
+  its id regex can't find 11% of gold record ids (refunds `re_`, invoices `in_`, ...).
 - `core/llm/embedding` `same_vector_space`: search refuses to run if the query embedder's
   identity (provider, model, revision digest, dimensions, options) differs from the
   collection's. Borrow it: it ties every number to an exact index build.
@@ -192,6 +200,9 @@ If any code is copied, keep the MIT notice and record it in `VENDORED.md`.
   BM25 in-process, our own implementation, jieba plus an identifier pre-pass (2026-10-16).
 - Embeddings computed once and cached; a 2 GiB swap file on the VM (2026-10-16; ROADMAP S0).
 - Retrieval eval before the agent; graders before the agent (yiagent's S2-before-S3 order).
+- **Chat model `deepseek-v4-flash`** for all answers (one-call baseline, our agent, the
+  course stages); **judge Claude Haiku 5.5 or Sonnet 5.5**, chosen by agreement with Yi's
+  labels (Yi, 2026-10-17; rule in ROADMAP S3).
 
 ## Proposed stages (refine in `docs/ROADMAP.md`; record decisions there)
 - **S0 scaffold:** uv, Python 3.12, `make verify` (ruff, mypy --strict, pytest), vendored
@@ -339,18 +350,23 @@ cleanup, not failed calls; fixed (one loop and one client per run). `make verify
 top 20, keep the top 10** (ROADMAP "S2 closed" has the reasons, costs and the dev ladder:
 course-dense 0.293, BM25 0.456, hybrid 0.549, hybrid-4b 0.604, + rerank 0.714 recall@10).
 
-## Next session: start here (S3 answer graders, not started)
-1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S2 closed" and "S3", which
-   lists the proposed order. Graders before the agent, as in yiagent.
-2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo) and read
-   the benchmark spec in its `docs/` plus the `ground_truth` / `resolved_*` /
-   `forbidden_shortcuts` fields before writing a grader. Otherwise build against
-   `tests/synthetic.py`, extended to carry assertions and trajectories.
-3. First deliverable: an answer record format + deterministic graders (evidence ids,
-   trajectory / required tools, forbidden shortcuts) with oracle / null / wrong / verbose
-   null baselines inside `make verify`. No money needed for that part.
-4. Decisions for Yi before paid work: the judge model, and the one-call RAG baseline that
-   produces the ~50 dev answers Yi labels by hand for judge calibration.
+**S3 step 1 done** (2026-10-17, container, on the uploaded zip): read the benchmark spec,
+every label field, the simulated user, the SQLite schema and the course scorer; findings
+with numbers and the grader design they lead to are in ROADMAP "S3 step 1". Yi decided
+the models: chat `deepseek-v4-flash`, judge Haiku 5.5 or Sonnet 5.5.
+
+## Next session: start here (S3 step 2, the answer record format)
+1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3": the order, the model
+   decisions and "S3 step 1" (11 findings). Graders before the agent, as in yiagent.
+2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo).
+   Otherwise build against `tests/synthetic.py`, extended to carry assertions,
+   trajectory assertions, selectors and observed evidence ids.
+3. Next deliverable (steps 2-4, no money): the answer record format + deterministic
+   graders (evidence per selector incl. negatives, source/operation coverage, instance
+   facts, the `as_of` shortcut, clarification accounting) with oracle / null / wrong
+   (other family) / rule-only / verbose null baselines inside `make verify`.
+4. Then the OpenAI-compatible provider for `deepseek-v4-flash` and the judge; Yi runs the
+   paid one-call baseline and labels ~50 dev answers for calibration.
 5. S3 is a gate, not a step to compress: no S4 agent variant is compared before its
    graders pass their oracle / null / wrong checks, or S4's A/Bs (tool shape,
    `disputed()`, budgets, ask-user) would be chosen by reading outputs. The time box

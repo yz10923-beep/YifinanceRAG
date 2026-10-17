@@ -411,33 +411,145 @@ goes to stderr, and the Ollama request timeout is 600 s. Tested (`make verify` 1
 **Done when** every grader passes its oracle/null/wrong checks and the judge's agreement
 with Yi's labels is reported.
 
-**Proposed order for S3 (not started; 2026-10-17):**
-1. Read before writing graders: the dataset's benchmark spec in `docs/` (Chinese),
-   `benchmark/resolved/resolved_blueprints.jsonl` fields (`ground_truth.required_assertions`,
-   `negative_assertions`, `canonical_answer`, `resolved_trajectory_assertions`,
-   `required_tools`, `forbidden_shortcuts`), and the course scorer
-   `scripts/benchmark/` (its weaknesses are listed in CLAUDE.md).
-2. An answer record format (answer text, cited evidence ids, tool calls) that the
-   graders read and the S4 agent will write; grader-only labels stay in `Label`.
-3. Deterministic graders first: evidence ids (doc / sql / runtime / negative) vs gold;
-   trajectory and required-tool checks (mapping our tool names to the benchmark's is a
-   decision to record); forbidden shortcuts that can be checked from the trajectory.
+**Order for S3 (step 1 done 2026-10-17; the rest updated by its findings, below):**
+1. ~~Read before writing graders~~: done, see "S3 step 1" below.
+2. An answer record format (answer text, cited evidence ids, tool calls with their
+   observed evidence ids, clarification turns) that the graders read and the S4 agent
+   will write; grader-only labels stay in `Label`.
+3. Deterministic graders first: evidence per selector (doc / sql / runtime / negative,
+   finding 5-6), source and operation coverage (finding 7), instance facts (finding 9),
+   the `as_of` shortcut (finding 3), clarification accounting (finding 10).
 4. Baselines with no LLM, inside `make verify` on synthetic data: oracle
-   (`canonical_answer` + gold ids), null (empty / "不知道"), wrong (another question's
-   oracle answer), and the "verbose null" (the S2 config's top-10 chunks pasted as the
-   answer), scored by our graders and the course scorer.
+   (`resolved_answer` where it exists, else `canonical_answer`, plus gold ids), null
+   (empty / "不知道"), wrong (an answer from **another family**: finding 2), the rule-only
+   answer (`canonical_answer` on the 180 dynamic questions: must fail instance facts),
+   and the "verbose null" (the S2 config's top-10 chunks pasted as the answer), scored by
+   our graders and the course scorer.
 5. The LLM judge for required / negative assertions (one call per answer, per-assertion
-   verdicts as JSON, replies cached like the reranker's). Open decision for Yi: the
-   judge model (Chinese text; ideally not the model family that writes the answers).
-6. Calibration needs real answers: a one-call RAG baseline (S2 config top 10 + one chat
-   call, no tools, no asking) answers the dev questions (paid, Yi runs it); Yi labels
-   about 50 of its answers by hand; report judge-vs-Yi agreement (per assertion, with
-   Cohen's kappa). The one-call baseline is also S4's bar, as in yiagent (0.93 there).
+   verdicts as JSON, replies cached like the reranker's). Judge model: decided below.
+6. The OpenAI-compatible provider for `deepseek-v4-flash` (moved here from S4 by the
+   chat-model decision), then calibration on real answers: a one-call RAG baseline (S2
+   config top 10 + one chat call, no tools, no asking) answers the dev questions (paid,
+   Yi runs it); Yi labels about 50 of its answers by hand; report judge-vs-Yi agreement
+   (per assertion, with Cohen's kappa). The one-call baseline is also S4's bar, as in
+   yiagent (0.93 there).
+
+### Decided (Yi, 2026-10-17): the models
+
+- **Chat model: `deepseek-v4-flash`** for every answer (one-call baseline, our agent, the
+  course's s1-s4), the course's own model, so the course stages run unchanged and the
+  comparison is one condition. Consequence: the OpenAI-compatible provider is built in S3
+  (step 6), not S4. Its price is None until read from DeepSeek's live pricing page.
+- **Judge: Claude Haiku 5.5 or Sonnet 5.5**, a different family from the answering model.
+  Proposed rule: run both on Yi's ~50 labelled answers and keep the cheaper one unless the
+  other's agreement with Yi is clearly higher (kappa difference larger than the
+  trial-to-trial noise of re-asking the same judge). Estimate at an assumed ~3k input /
+  ~400 output tokens an answer, from `llm/pricing.py`'s rates: Haiku ~$0.0005 an answer,
+  Sonnet ~$0.01 an answer; calibrating both on 50 answers is under $1.
+
+### S3 step 1 (2026-10-17): what the labels and the course scorer say
+
+Read: the benchmark spec (`docs/02_benchmark/FlowPay_300题Benchmark设计规范.md`), all
+fields of `resolved_blueprints.jsonl` and `evidence_resolution.jsonl`, the simulated user,
+the SQLite schema and runtime logs, and the course scorer (`scripts/benchmark/`, repo
+unchanged at 4 commits). Every number below was computed on the uploaded zip.
+
+The spec's own scoring dimensions (section 11): answer correctness (required assertions
+hit, negative not triggered), evidence recall, citation precision, tool selection, hop
+completion, temporal accuracy, stop accuracy, unnecessary calls, cost / latency. Section
+5.1: numbers, enums, entity relations and times are graded deterministically; an LLM judge
+only for free-text explanation. Section 5.4: on the 180 dynamic questions a rule-only
+answer fails; the answer must state what the account's records show.
+
+Findings:
+1. **Label shape.** `required_assertions`: 1 or 2 per question (230 have 2).
+   `negative_assertions`: exactly 1 per question, always `不得认定：X`.
+   `acceptable_variants`: empty everywhere. On the 180 `progressive_disclosure`
+   questions only: `resolved_trajectory_assertions` (2-5 each; each has the selector alias
+   and evidence ids), `resolved_answer` (the oracle with instance facts and an
+   `Evidence IDs：[...]` line), `resolved_timeline`, and `instance_diagnosis_contract`
+   with `static_rule_only_answer_is_accepted: false`. The 120 single-turn questions have
+   none of these. 535 `evidence_selectors` (361 `exactly_one`, 174 `at_least_one`).
+   `max_clarification_turns`: 2 (87), 3 (63), 4 (30).
+2. **The 4 questions of a family share their required assertions** (e.g. SF-001's
+   simple_retrieval, multi_document, multi_hop and multi_source questions), and its
+   dynamic questions share instance facts. A "wrong" baseline must come from another
+   family; a same-family answer scores as right on every grader.
+3. **`forbidden_shortcuts` is the same 3 values on all 300 questions**: global rules, not
+   per-question labels. `raw_sql_or_hidden_audit_access` is prevented by construction (no
+   such tool) and checked by a leakage test, not graded. `current_state_used_for_historical_question`
+   is checkable from the trajectory: a data tool call with no `as_of`, or one not on the
+   label's `as_of` date. `support_case_as_current_fact` needs the judge (low priority).
+4. **Evidence id formats are in the data already.** Runtime rows carry `evidence_id`
+   (`runtime:req:…`, `runtime:attempt:…`, `runtime:usage:<acct>:<env>:<minute>`,
+   `runtime:incident:…`); SQL ids are `sql:<entity>:<primary key>`, composite for
+   `feature_flag` (`<acct>:<env>:<feature>`) and `invoice_attempt` (`<invoice>:<n>`).
+   So S4's data tools return the dataset's own id on every row, and observed ids compare
+   with gold without a mapping (unlike doc chunks, which need `EvidenceMap`).
+5. **Negative evidence ids (50) can't be produced by an agent.** They are hashes:
+   sha256 of the selector payload (sorted, compact JSON, without `operation`), first 20
+   hex chars, reproduces 37 of 50; the other 13 (`list_api_keys`, `get_plan_timeline`,
+   `get_service_status`, one `get_request`) hash fields the resolution file doesn't show,
+   and the resolver isn't in the course-member zip. Proposed: grade a negative by
+   selector: found when the trajectory has a call to that tool and operation with the
+   selector's identifying parameters that returned zero rows.
+6. **List selectors expand to many ids** (one `list_requests` resolves to 20 request ids).
+   Per-id recall would weight it 20x. Proposed: score record evidence per selector
+   (`exactly_one`: its id observed; `at_least_one`: any of its ids observed), and report
+   per-id recall next to it.
+7. **Tool names: measure sources, not names.** Every chunk carries the `tool` that should
+   find it (api_docs 237, troubleshooting 213, support_cases 160, business_rules 126,
+   release_notes 73 chunks). A required `search_*` tool is satisfied when a passage tagged
+   with it was observed, which works for per-doc-type tools and for one
+   `search_documents` alike (S4's tool-shape A/B needs both scored the same way). Data
+   tools: `required_operations` names 20 operations over the 4 data tools
+   (`query_payments.get_payment` 71 … `query_payments.list_customers` 4), satisfied by a
+   call to that operation.
+8. **The course scorer, measured:**
+   - It reads evidence from what tools returned, not from what the answer cites.
+   - Its record-id regex (`acct|pay|evt|del|we|req|inc|att|cus|sub|inv|ref`) misses
+     refunds (`re_…`), invoices (`in_…`), API keys (`key_…`) and plan changes (`pc_…`):
+     **74 of 680 gold record ids (11%), in 45 questions, can never be found**; 20 more
+     (feature flags, usage buckets) count as found whenever the account id appears.
+   - It drops negative evidence entirely.
+   - It never grades `resolved_trajectory_assertions`: **the rule-only `canonical_answer`
+     passes all 180 dynamic questions**, which the spec says must fail.
+   - **Pasting the question's gold doc chunks, no LLM, passes 87/300** (dev 12/60;
+     simple_retrieval 28/70, multi_document 7/50, multi_hop 16/60, multi_source 20/70,
+     temporal 9/25, diagnostic 7/25): the bigram rule rewards long text.
+   - What does hold: oracle `canonical_answer` 300/300, another family's answer 0/300,
+     "不知道" 0/300, the canonical answer plus the forbidden claim verbatim 0/300.
+   - It reads `design/` blueprints; their ground truth equals `resolved/` on 300/300, so
+     that is harmless.
+   So it stays a second score (to compare with the course's numbers), never our grade.
+9. **Instance facts can be graded deterministically.** Prototype: take the ids, codes,
+   numbers and enum words in each trajectory assertion and check them in the answer.
+   Mean key coverage: oracle `resolved_answer` 1.00 (180/180 complete), rule-only
+   `canonical_answer` 0.11 (0/180), another family's `resolved_answer` 0.38 (0/180; shared
+   tokens like `2026`, `production`, `NA`). To build: drop generic tokens, normalize dates
+   (`08 月 02 日 11:50` vs `8月2日`), count a key only where the trajectory observed it.
+10. **The simulated user matches keywords** (`CATEGORY_KEYWORDS`, 6 categories): one
+    question naming every category gets every fact in one turn, so the clarification
+    turn budget alone doesn't measure asking well. Record turns used, the categories asked
+    and the ones beyond `required_clarification_categories`; the course driver also logs
+    `answered_without_clarification`, `max_clarifications_exceeded`, `repeated_category`.
+11. **Leakage hazards for S4's data tools:** `flowpay.sqlite` itself holds an
+    `event_journal` table (134,055 rows: the audit journal), `scenario_executions` (with
+    the split) and `simulation_runs`; runtime rows carry `scenario_id` (4,204 of 54,604
+    API requests, e.g. `SC-054-downgrade_restricts_newer_endpoints`, which names the
+    scenario) and `run_id`. Data tools: a table and column whitelist, `scenario_id` and
+    `run_id` stripped; the leakage test scans tool outputs for `SC-`, `SF-`, question ids
+    and the event journal. Today's leakage test only checks chunks for `event_journal`.
+
+Interview line: "The reference scorer passes a rule-only answer on every one of the 180
+questions that require looking up the account, and passes pasted source text on 29% of
+all questions with no model at all. So I graded instance facts deterministically and
+used the LLM judge only for the free-text assertions, calibrated against my own labels."
 
 ## S4 agent
 
-Own loop over the vendored provider; an OpenAI-compatible provider (DeepSeek / Qwen) next
-to the Anthropic one; data tools under a policy file (column whitelists, scope enforced in
+Own loop over the vendored provider, answering with `deepseek-v4-flash` through the
+OpenAI-compatible provider built in S3; data tools under a policy file (column whitelists, scope enforced in
 SQL, row caps); ask-user for progressive-disclosure questions via the dataset's simulated
 user. A/Bs on dev: tool shape (per-doc-type search tools vs one `search_documents`),
 `disputed()` bounce, budgets. Course s1-s4 run as baselines on the same chat model.
