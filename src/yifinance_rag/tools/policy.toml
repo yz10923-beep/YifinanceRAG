@@ -1,0 +1,108 @@
+# Data-tool policy: what each read-only operation may read and return. The agent picks an
+# operation and fills its parameters; it never writes SQL. Scope (account_id, environment)
+# is required wherever the data has one and is bound as a SQL parameter, never as text.
+# Columns not listed here are never returned (run_id, scenario_id, fingerprints, hashes).
+# Tables not reachable from any operation: event_journal, scenario_executions,
+# simulation_runs (the audit journal and the benchmark's own bookkeeping).
+#
+# `as_of` (ISO time, optional; default: the snapshot's freeze time) scopes reads to what
+# existed then. Semantics per operation were fixed by reproducing all 535 benchmark
+# selectors (tests/dataset/test_tools.py), not by guess.
+
+freeze_default = true   # no as_of = "now" = the snapshot's freeze_at
+max_rows = 20           # list operations return the first rows in time order, then stop
+window_hours = 24       # list_requests / get_usage default: the 24 hours up to as_of
+
+[retention_days]        # how far back request logs and usage are queryable, by plan in force
+Starter = 7
+Growth = 30
+Scale = 90
+
+[columns]
+accounts = ["account_id", "name", "primary_region", "default_api_version", "production_status", "current_plan", "billing_cycle_anchor", "created_at", "updated_at"]
+plan_changes = ["plan_change_id", "account_id", "from_plan", "to_plan", "requested_at", "effective_at", "status"]
+api_keys = ["key_id", "account_id", "environment", "key_type", "key_prefix", "scopes_json", "status", "created_at", "expires_at", "revoked_at", "replaced_by_key_id"]
+feature_flags = ["account_id", "environment", "feature_name", "enabled", "effective_at", "updated_at"]
+customers = ["customer_id", "account_id", "environment", "email", "name", "metadata_json", "status", "created_at", "updated_at", "deleted_at"]
+payments = ["payment_id", "account_id", "environment", "customer_id", "amount", "currency", "status", "api_version", "payment_method_profile_id", "failure_code", "failure_category", "created_by_request_id", "created_at", "updated_at", "succeeded_at", "terminal_at"]
+refunds = ["refund_id", "payment_id", "account_id", "environment", "amount", "currency", "status", "mode", "failure_code", "created_by_request_id", "created_at", "updated_at", "completed_at"]
+subscriptions = ["subscription_id", "account_id", "environment", "customer_id", "status", "amount", "currency", "interval", "trial_end_at", "cancel_at_period_end", "current_period_start", "current_period_end", "created_at", "updated_at", "canceled_at"]
+invoices = ["invoice_id", "subscription_id", "account_id", "environment", "status", "amount_due", "amount_paid", "currency", "period_start", "period_end", "finalized_at", "paid_at"]
+invoice_payment_attempts = ["invoice_id", "attempt_number", "payment_id", "scheduled_at", "executed_at", "outcome"]
+webhook_endpoints = ["endpoint_id", "account_id", "environment", "url_host", "status", "api_version", "secret_version", "retry_policy_id", "created_at", "updated_at", "disabled_at"]
+events = ["event_id", "account_id", "environment", "event_type", "api_version", "object_type", "object_id", "occurred_at", "caused_by_request_id"]
+webhook_deliveries = ["delivery_id", "event_id", "endpoint_id", "status", "attempt_count", "first_attempt_at", "last_attempt_at", "next_attempt_at", "delivered_at", "terminal_reason"]
+api_requests = ["request_id", "account_id", "environment", "region", "service", "method", "route", "api_version", "http_status", "error_code", "latency_ms", "started_at", "completed_at", "response_object_type", "response_object_id", "retry_parent_request_id", "idempotency_key_hash", "request_details"]
+usage_buckets = ["account_id", "environment", "bucket_start", "bucket_width_seconds", "request_count", "success_count", "error_count", "rate_limited_count", "burst_peak_10s", "plan_effective_at_bucket"]
+delivery_attempts = ["attempt_id", "delivery_id", "event_id", "endpoint_id", "attempt_number", "attempted_at", "http_status", "error_code", "response_kind", "resulting_delivery_status", "next_retry_at", "latency_ms", "secret_version", "signature_timestamp", "verification_details"]
+service_incidents = ["incident_id", "service", "region", "status", "impact", "affected_error_codes", "started_at", "identified_at", "resolved_at", "timeline"]
+
+# Operations: tool -> operation -> required parameters beyond scope, and a description the
+# agent sees. `scoped = false` only where the data has no tenant (platform status).
+[operations.query_accounts.get_account]
+params = []
+description = "The account: plan, region, default API version, production status."
+[operations.query_accounts.get_plan_timeline]
+params = []
+description = "Plan changes requested up to as_of (from/to plan, requested and effective times, status)."
+[operations.query_accounts.list_api_keys]
+params = []
+description = "API keys of the account and environment that existed at as_of (type, prefix, scopes, status)."
+[operations.query_accounts.get_feature_flags]
+params = []
+description = "Feature flags effective at as_of for the account and environment."
+
+[operations.query_payments.get_payment]
+params = ["payment_id"]
+description = "One payment by id, if it belongs to this account and environment."
+[operations.query_payments.list_payments]
+params = []
+description = "Payments of the account and environment created up to as_of, oldest first."
+[operations.query_payments.get_refund]
+params = ["refund_id"]
+description = "One refund by id, if it belongs to this account and environment."
+[operations.query_payments.get_customer]
+params = ["customer_id"]
+description = "One customer by id, if it belongs to this account and environment."
+[operations.query_payments.list_customers]
+params = []
+description = "Customers of the account and environment created up to as_of, oldest first."
+[operations.query_payments.get_subscription]
+params = ["subscription_id"]
+description = "One subscription and its invoices finalized up to as_of."
+[operations.query_payments.get_invoice_timeline]
+params = ["invoice_id"]
+description = "One invoice and its payment attempts."
+
+[operations.query_webhooks.get_endpoint]
+params = ["endpoint_id"]
+description = "One webhook endpoint: status, API version, secret version, retry policy."
+[operations.query_webhooks.list_endpoints]
+params = []
+description = "Webhook endpoints of the account and environment created up to as_of."
+[operations.query_webhooks.get_event]
+params = ["event_id"]
+description = "One event: type, API version, object, time, causing request."
+[operations.query_webhooks.get_delivery]
+params = ["delivery_id"]
+description = "One webhook delivery: status, attempt count, first/last/next attempt, terminal reason."
+
+[operations.get_runtime_state.get_request]
+params = ["request_id"]
+description = "One API request log (route, status, error code, times), if within the plan's log retention."
+[operations.get_runtime_state.list_requests]
+params = []
+optional = ["since"]
+description = "API request logs of the account and environment in the 24 hours up to as_of (or from since), within the plan's retention, oldest first."
+[operations.get_runtime_state.get_usage]
+params = []
+optional = ["since"]
+description = "Per-minute usage buckets in the 24 hours up to as_of (or from since), within the plan's retention (requests, errors, rate limited, burst peak)."
+[operations.get_runtime_state.get_delivery_timeline]
+params = ["delivery_id"]
+description = "Every attempt of one webhook delivery (time, HTTP status, error, resulting status)."
+[operations.get_runtime_state.get_service_status]
+params = []
+scoped = false
+optional = ["incident_id", "service", "region"]
+description = "Platform incidents: by incident_id, or those of a service and region active at as_of."

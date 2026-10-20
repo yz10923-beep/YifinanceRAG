@@ -855,6 +855,47 @@ Decided in this plan, open for Yi: the agent's final answer is a tool call
 (`submit_answer`), not free text, so citations are structured; its system prompt states
 the strict rubric's intent (conclude only from evidence; ask for missing ids).
 
+### S4a done (2026-10-20, container, on the uploaded zip): data tools, fidelity 535/535
+
+Built `src/yifinance_rag/tools/`: `policy.toml` (operations, parameters, descriptions,
+column whitelists, row cap, window, retention by plan) and `data.py` (`DataStore`,
+`DataTools`: 4 tools, 20 operations, each a fixed parameterised query).
+- **Isolation by construction:** the business SQLite is opened `mode=ro`; scope
+  (`account_id`, `environment`) is required and bound in every tenant query; webhook
+  deliveries, which have no tenant columns, are scoped through their event. Runtime logs
+  load into an in-memory SQLite with only whitelisted columns, so `scenario_id` and
+  `run_id` are dropped as they are read; `event_journal`, `scenario_executions` and
+  `simulation_runs` are reachable from no operation; fingerprints and hashes are not
+  whitelisted. Refusals (unknown operation, missing scope or id, bad time) are
+  `ToolError`s the agent reads as observations.
+- **Semantics fixed from the data** (the course's tools have no time scope at all):
+  rows created up to `as_of` (default: the snapshot's freeze, 2026-08-27 12:00 UTC);
+  subscriptions with invoices finalized by `as_of`; invoices with all their attempts;
+  delivery timelines with every attempt (the benchmark includes later ones);
+  **request logs and usage limited by the plan in force at `as_of`** (Starter 7 days,
+  Growth 30, Scale 90; the plan at a time = the current plan with later *effective*
+  changes undone; scheduled ones don't count); **`list_requests` / `get_usage` = the 24
+  hours up to `as_of`** (one selector excludes a request 25 hours old), optional `since`;
+  lists oldest first, capped at 20 with `truncated`. An empty result carries a note
+  (e.g. "logs before 2026-08-16 are outside the Starter plan's retention"), never whether
+  another tenant's object exists.
+- **Fidelity: 535 / 535 selectors reproduced exactly** (incl. the 50 "no such record"
+  negatives), called with each selector's own parameters. The first try missed 5: the
+  retention trap (3, a 20-day-old log on a Starter account) and the 24-hour window (2).
+- **Leakage: 0 hits** for scenario / family / question ids, `run_id`, `scenario_id` or the
+  audit journal in all 535 real outputs. Observations: median 460 characters, max ~11k.
+- Known limit, consistent with the benchmark's own resolver: rows show their state at the
+  snapshot, so 30 of 718 gold rows (4%; delivery timelines, invoices) carry times after
+  `as_of`. Hiding them would break fidelity with the gold evidence; recorded, not changed.
+- Tests: `tests/unit/test_tools.py` (9, synthetic snapshot with a plan downgrade, two
+  tenants, planted secrets) and `tests/dataset/test_tools.py` (fidelity + leakage).
+  `make verify` 163 passed, `make data-test` 7 passed.
+
+Interview line: "The reference course's data tools ignore time. Mine take an as-of time
+and enforce the plan's log retention, and I didn't guess their semantics: the tools
+reproduce the benchmark's 535 gold lookups exactly, which found two rules (retention by
+plan, a 24-hour window) I would otherwise have missed."
+
 ## S5 test once + deploy
 
 Final numbers on the 240 test questions, run once; a small deployed demo; README with the

@@ -250,7 +250,8 @@ uv run yfr agree LABELS.tsv RUN [RUN ...]   # judge vs Yi's labels: agreement, k
 
 Layout: `src/yifinance_rag/data/` (dataset files and hashes, corpus + `EvidenceMap`,
 benchmark `Question` vs `Label`, pins, `check_dataset`), `src/yifinance_rag/retrieval/`
-(tokenizer, BM25, retrievers, metrics, `dense.py`), `src/yifinance_rag/grade/` (answer
+(tokenizer, BM25, retrievers, metrics, `dense.py`), `src/yifinance_rag/tools/` (data tools:
+`policy.toml`, `data.py`), `src/yifinance_rag/grade/` (answer
 record, grader-side `Truth`, deterministic graders, instance-fact atoms, the course scorer
 port, no-LLM baselines, selftest, judge, calibration), `src/yifinance_rag/answer/` (systems
 that answer: `onecall.py`), `src/yifinance_rag/llm/` (Anthropic and OpenAI-compatible
@@ -406,13 +407,19 @@ support an assertion). Judge Haiku 5.5; after the ellipsis-quote fix the one-cal
 judge_task 0.400 (single 0.708, progressive 0.194), instance facts 0.208 (ROADMAP "S3
 closed": graders, numbers, interview lines). `make verify` 154 passed.
 
-## Next session: start here (S4a: data tools and the fidelity test)
+**S4a done (2026-10-20, container):** data tools (`src/yifinance_rag/tools/`: `policy.toml`
++ `data.py`; 4 tools, 20 operations, read-only, scope bound in SQL, `as_of`, retention by
+plan, 24-hour log window). **Reproduce all 535 benchmark selectors exactly**; 0 leaks in
+real outputs. `make verify` 163 passed, `make data-test` 7 passed (ROADMAP "S4a done").
+
+## Next session: start here (S4b: the agent loop)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3 closed" and "S4" (plan
    S4a-S4e). The graders are closed: don't change them to make S4 look better.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo); S4a
    needs `data/generated/canonical/` and `evidence_resolution.jsonl`.
-3. S4a first: the four data tools under a policy file, and the test that our tools
-   reproduce all 535 selectors' evidence ids; record any operation that doesn't.
+3. S4a is done (data tools, 535/535). Next S4b: the loop (search tools with the S2
+   config, the data tools, `ask_user` via the simulated user, `submit_answer` with cited
+   ids), budgets, records and traces; scripted-provider tests only, no money.
 4. No `main` branch exists on GitHub yet (2026-10-20); ask Yi before creating it.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,

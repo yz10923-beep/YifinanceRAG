@@ -416,3 +416,427 @@ def write_release(root: Path) -> None:
     path = root / RELEASE_MANIFEST
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(release))
+
+
+# A tiny canonical snapshot for the data tools: two tenants, a plan downgrade (retention
+# shrinks from 30 to 7 days), more requests than one page, a delivery attempt after as_of,
+# and the things no tool may return (run_id, scenario_id, the audit journal).
+CANONICAL = "data/generated/canonical"
+
+
+def _table(db: object, name: str, rows: list[dict[str, object]]) -> None:
+    import sqlite3
+
+    assert isinstance(db, sqlite3.Connection)
+    cols = list(rows[0])
+    db.execute(f"CREATE TABLE {name} ({', '.join(cols)})")
+    db.executemany(
+        f"INSERT INTO {name} VALUES ({', '.join('?' * len(cols))})",
+        [[r[c] for c in cols] for r in rows],
+    )
+
+
+def write_canonical(root: Path) -> Path:
+    import sqlite3
+
+    base = root / CANONICAL
+    (base / "runtime").mkdir(parents=True, exist_ok=True)
+    (base / "manifest.json").write_text(json.dumps({"freeze_at": "2026-08-27T12:00:00.000Z"}))
+    db = sqlite3.connect(base / "flowpay.sqlite")
+    run = {"run_id": "run_canonical_x"}
+    _table(
+        db,
+        "accounts",
+        [
+            {
+                **run,
+                "account_id": a,
+                "name": a,
+                "primary_region": "NA",
+                "default_api_version": "2026-07-01",
+                "production_status": "active",
+                "current_plan": plan,
+                "billing_cycle_anchor": None,
+                "created_at": "2026-07-01T00:00:00.000Z",
+                "updated_at": "2026-08-05T00:00:00.000Z",
+            }
+            for a, plan in (("acct_a", "Starter"), ("acct_b", "Growth"))
+        ],
+    )
+    _table(
+        db,
+        "plan_changes",
+        [
+            {
+                **run,
+                "plan_change_id": "pc_a_1",
+                "account_id": "acct_a",
+                "from_plan": "Growth",
+                "to_plan": "Starter",
+                "requested_at": "2026-08-05T00:00:00.000Z",
+                "effective_at": "2026-08-05T00:00:00.000Z",
+                "status": "effective",
+            },
+            {
+                **run,
+                "plan_change_id": "pc_b_1",
+                "account_id": "acct_b",
+                "from_plan": "Growth",
+                "to_plan": "Scale",
+                "requested_at": "2026-08-06T00:00:00.000Z",
+                "effective_at": "2026-08-26T00:00:00.000Z",
+                "status": "scheduled",
+            },
+        ],
+    )
+    _table(
+        db,
+        "api_keys",
+        [
+            {
+                **run,
+                "key_id": "key_a_1",
+                "account_id": "acct_a",
+                "environment": "production",
+                "key_type": "secret",
+                "key_prefix": "sk_live_",
+                "key_fingerprint": "SECRET-FP",
+                "scopes_json": "[]",
+                "status": "active",
+                "created_at": "2026-07-02T00:00:00.000Z",
+                "expires_at": None,
+                "revoked_at": None,
+                "replaced_by_key_id": None,
+            },
+        ],
+    )
+    _table(
+        db,
+        "feature_flags",
+        [
+            {
+                **run,
+                "account_id": "acct_a",
+                "environment": "production",
+                "feature_name": "subscriptions",
+                "enabled": 1,
+                "effective_at": "2026-08-01T00:00:00.000Z",
+                "updated_at": "2026-08-01T00:00:00.000Z",
+            },
+        ],
+    )
+    _table(
+        db,
+        "customers",
+        [
+            {
+                **run,
+                "customer_id": "cus_a_1",
+                "account_id": "acct_a",
+                "environment": "production",
+                "email": "a@example.com",
+                "name": "A",
+                "metadata_json": "{}",
+                "status": "active",
+                "created_at": "2026-07-05T00:00:00.000Z",
+                "updated_at": "2026-07-05T00:00:00.000Z",
+                "deleted_at": None,
+            },
+        ],
+    )
+    pay = {
+        "customer_id": "cus_a_1",
+        "currency": "USD",
+        "status": "succeeded",
+        "api_version": "2026-07-01",
+        "payment_method_profile_id": None,
+        "failure_code": None,
+        "failure_category": None,
+        "idempotency_key_hash": "HASH",
+        "created_by_request_id": None,
+        "updated_at": None,
+        "succeeded_at": None,
+        "terminal_at": None,
+    }
+    _table(
+        db,
+        "payments",
+        [
+            {
+                **run,
+                **pay,
+                "payment_id": "pay_a_1",
+                "account_id": "acct_a",
+                "environment": "production",
+                "amount": 10000,
+                "created_at": "2026-08-01T10:00:00.000Z",
+            },
+            {
+                **run,
+                **pay,
+                "payment_id": "pay_b_1",
+                "account_id": "acct_b",
+                "environment": "production",
+                "amount": 5000,
+                "created_at": "2026-08-01T10:00:00.000Z",
+            },
+        ],
+    )
+    _table(
+        db,
+        "refunds",
+        [
+            {
+                **run,
+                "refund_id": "re_a_1",
+                "payment_id": "pay_a_1",
+                "account_id": "acct_a",
+                "environment": "production",
+                "amount": 2000,
+                "currency": "USD",
+                "status": "pending",
+                "mode": "standard",
+                "failure_code": None,
+                "created_by_request_id": None,
+                "created_at": "2026-08-10T00:00:00.000Z",
+                "updated_at": None,
+                "completed_at": None,
+            },
+        ],
+    )
+    _table(
+        db,
+        "subscriptions",
+        [
+            {
+                **run,
+                "subscription_id": "sub_a_1",
+                "account_id": "acct_a",
+                "environment": "production",
+                "customer_id": "cus_a_1",
+                "status": "active",
+                "amount": 2500,
+                "currency": "USD",
+                "interval": "month",
+                "trial_end_at": None,
+                "cancel_at_period_end": 0,
+                "current_period_start": None,
+                "current_period_end": None,
+                "created_at": "2026-07-10T00:00:00.000Z",
+                "updated_at": None,
+                "canceled_at": None,
+            },
+        ],
+    )
+    inv = {
+        "subscription_id": "sub_a_1",
+        "account_id": "acct_a",
+        "environment": "production",
+        "amount_due": 2500,
+        "currency": "USD",
+        "period_start": None,
+        "period_end": None,
+    }
+    _table(
+        db,
+        "invoices",
+        [
+            {
+                **run,
+                **inv,
+                "invoice_id": "in_a_1",
+                "status": "paid",
+                "amount_paid": 2500,
+                "finalized_at": "2026-08-10T00:00:00.000Z",
+                "paid_at": "2026-08-10T00:00:00.000Z",
+            },
+            {
+                **run,
+                **inv,
+                "invoice_id": "in_a_2",
+                "status": "open",
+                "amount_paid": 0,
+                "finalized_at": "2026-08-25T00:00:00.000Z",
+                "paid_at": None,
+            },
+        ],
+    )
+    _table(
+        db,
+        "invoice_payment_attempts",
+        [
+            {
+                **run,
+                "invoice_id": "in_a_1",
+                "attempt_number": 0,
+                "payment_id": "pay_a_1",
+                "scheduled_at": None,
+                "executed_at": "2026-08-10T00:00:00.000Z",
+                "outcome": "succeeded",
+            },
+        ],
+    )
+    _table(
+        db,
+        "webhook_endpoints",
+        [
+            {
+                **run,
+                "endpoint_id": "we_a_1",
+                "account_id": "acct_a",
+                "environment": "production",
+                "url_host": "a.example.com",
+                "url_path_hash": "HASH",
+                "status": "enabled",
+                "api_version": "2026-07-01",
+                "secret_version": 1,
+                "secret_fingerprint": "SECRET-FP",
+                "retry_policy_id": "default",
+                "created_at": "2026-07-03T00:00:00.000Z",
+                "updated_at": None,
+                "disabled_at": None,
+            },
+        ],
+    )
+    _table(
+        db,
+        "events",
+        [
+            {
+                **run,
+                "event_id": "evt_a_1",
+                "account_id": "acct_a",
+                "environment": "production",
+                "event_type": "payment.succeeded",
+                "api_version": "2026-07-01",
+                "object_type": "payment",
+                "object_id": "pay_a_1",
+                "occurred_at": "2026-08-20T11:00:00.000Z",
+                "payload_hash": "HASH",
+                "caused_by_request_id": None,
+            },
+        ],
+    )
+    _table(
+        db,
+        "webhook_deliveries",
+        [
+            {
+                **run,
+                "delivery_id": "del_a_1",
+                "event_id": "evt_a_1",
+                "endpoint_id": "we_a_1",
+                "status": "retrying",
+                "attempt_count": 2,
+                "first_attempt_at": "2026-08-20T11:01:00.000Z",
+                "last_attempt_at": "2026-08-21T11:01:00.000Z",
+                "next_attempt_at": None,
+                "delivered_at": None,
+                "terminal_reason": None,
+            },
+        ],
+    )
+    _table(db, "event_journal", [{**run, "event_sequence": 1, "payload_json": "THE ANSWERS"}])
+    _table(db, "scenario_executions", [{**run, "scenario_id": "SC-001-x", "split": "dev"}])
+    db.commit()
+    db.close()
+
+    def req(rid: str, account: str, started: str) -> dict[str, object]:
+        return {
+            "request_id": rid,
+            "account_id": account,
+            "environment": "production",
+            "region": "NA",
+            "service": "payments",
+            "method": "POST",
+            "route": "/v1/payments",
+            "api_version": "2026-07-01",
+            "http_status": 200,
+            "error_code": None,
+            "latency_ms": 10,
+            "started_at": started,
+            "completed_at": started,
+            "response_object_type": None,
+            "response_object_id": None,
+            "retry_parent_request_id": None,
+            "idempotency_key_hash": None,
+            "request_details": {},
+            "evidence_id": f"runtime:req:{rid}",
+            "scenario_id": "SC-001-x",
+            "run_id": "run_canonical_x",
+            "schema_version": "1.0",
+        }
+
+    requests = [
+        req("req_a_old", "acct_a", "2026-08-01T11:50:00.000Z"),
+        req("req_a_day_before", "acct_a", "2026-08-19T10:00:00.000Z"),
+    ]
+    requests += [
+        req(f"req_a_{i:02d}", "acct_a", f"2026-08-20T11:{i:02d}:00.000Z") for i in range(22)
+    ]
+    requests += [req("req_b_1", "acct_b", "2026-08-20T11:30:00.000Z")]
+    usage = [
+        {
+            "account_id": "acct_a",
+            "environment": "production",
+            "bucket_start": "2026-08-20T11:50:00.000Z",
+            "bucket_width_seconds": 60,
+            "request_count": 22,
+            "success_count": 22,
+            "error_count": 0,
+            "rate_limited_count": 0,
+            "burst_peak_10s": 3,
+            "plan_effective_at_bucket": "Starter",
+            "evidence_id": "runtime:usage:acct_a:production:2026-08-20T11:50:00.000Z",
+            "run_id": "run_canonical_x",
+        }
+    ]
+    attempts: list[dict[str, object]] = [
+        {
+            "attempt_id": f"att_a_{n}",
+            "attempt_number": n,
+            "delivery_id": "del_a_1",
+            "event_id": "evt_a_1",
+            "endpoint_id": "we_a_1",
+            "attempted_at": at,
+            "http_status": 500,
+            "error_code": "delivery_failed",
+            "response_kind": "http",
+            "resulting_delivery_status": "retrying",
+            "next_retry_at": None,
+            "latency_ms": 5,
+            "secret_version": 1,
+            "signature_timestamp": at,
+            "verification_details": {},
+            "evidence_id": f"runtime:attempt:att_a_{n}",
+            "scenario_id": "SC-001-x",
+            "run_id": "run_canonical_x",
+        }
+        for n, at in ((1, "2026-08-20T11:01:00.000Z"), (2, "2026-08-21T11:01:00.000Z"))
+    ]
+    incidents = [
+        {
+            "incident_id": "inc_1",
+            "service": "payments",
+            "region": "NA",
+            "status": "resolved",
+            "impact": "elevated_errors",
+            "affected_error_codes": ["FP-5031"],
+            "started_at": "2026-08-20T11:00:00.000Z",
+            "identified_at": "2026-08-20T11:05:00.000Z",
+            "resolved_at": "2026-08-20T12:30:00.000Z",
+            "timeline": [],
+            "evidence_id": "runtime:incident:inc_1",
+            "run_id": "run_canonical_x",
+        }
+    ]
+    for name, rows in (
+        ("api_requests", requests),
+        ("usage_buckets", usage),
+        ("webhook_delivery_attempts", attempts),
+        ("service_incidents", incidents),
+    ):
+        (base / "runtime" / f"{name}.jsonl").write_text(
+            "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
+        )
+    return root
