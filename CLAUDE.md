@@ -396,7 +396,11 @@ sheets and agreement (`yfr label-sheet`, `yfr agree`). `make verify` 153 passed,
 `make data-test` 5 passed (incl. a no-ids check on every one-call prompt).
 **One-call on dev (VM, 2026-10-17):** judge_task 0.383 (Haiku and Sonnet; Haiku trial 2
 0.333), single-turn 0.667, progressive 0.194; instance facts 0.208; course task 0.383.
-About equal to pasting the chunks with no model (0.367 / 0.350). Yi is labelling.
+About equal to pasting the chunks with no model (0.367 / 0.350).
+**Judge vs Yi's labels (VM, 2026-10-20): Haiku chosen** (Sonnet's +0.025 all-items kappa
+is inside Haiku's 0.027 trial gap). Agreement only fair: required-item kappa 0.36 (Haiku)
+/ 0.40 (Sonnet); judges stricter than Yi (49 vs 76 of 106 supported; 23 vs 41 of 60
+answers pass). Labels frozen in `evals/records/grade/s3_labels_dev.tsv`.
 
 ## Next session: start here (S3 step 6: Yi's runs and labels)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3", steps 5 and 6.

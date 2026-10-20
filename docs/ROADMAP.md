@@ -729,6 +729,24 @@ that is S4's job, and 0.194 is the bar. Judge cost for 60 answers: Haiku $0.018,
 $0.258. The two judges agree in aggregate; item-level agreement with Yi decides (labels
 pending).
 
+**Judge vs Yi's labels (VM, 2026-10-20)** (`evals/records/grade/s3_judge_agreement_dev.md`;
+labels `s3_labels_dev.tsv`, 60 one-call dev answers, 166 items, blind):
+- **Decision (by the rule fixed beforehand): Haiku 5.5 stays the judge.** All-items kappa
+  Sonnet 0.578 vs Haiku 0.553 (+0.025); Haiku's two trials differ by 0.027, so Sonnet's
+  lead is inside Haiku's own noise, at 14x the cost ($0.26 vs $0.018 for 60 answers).
+- **Agreement is only fair, and the judges are stricter than Yi.** Required items: kappa
+  0.36 (Haiku) / 0.40 (Sonnet), agreement 0.67 / 0.69; Yi marks 76 of 106 supported, both
+  judges 49 (Haiku trial 1: 45). Task level: Yi passes 41 of 60 answers, the judges 23
+  (kappa 0.26 / 0.32). So the judged one-call score (0.383) is far below Yi's (0.683).
+- All-items kappa (0.55) overstates agreement: it pools the forbidden items, which are
+  nearly all "n" for both (Yi has 1 "y", the judges 0; kappa 0 there by construction).
+  Read required-item kappa. Forbidden detection is measured by the `forbidden` baseline
+  instead (60/60 caught by both judges).
+- Labels are frozen as Yi gave them; no relabelling after seeing judge verdicts.
+- Open (proposed, Yi to decide): one bounded attempt to understand the gap from the
+  ~30 Yi-yes / judge-no items (pattern, not case-by-case relabelling); if a prompt change
+  follows, its agreement must be measured on labels it was not tuned on.
+
 ## S4 agent
 
 Own loop over the vendored provider, answering with `deepseek-v4-flash` through the
