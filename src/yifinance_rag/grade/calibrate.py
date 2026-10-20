@@ -69,15 +69,24 @@ def write_label_sheet(
 
 def read_labels(path: Path) -> dict[tuple[str, str], bool]:
     """Labelled items only; blank labels are skipped, anything but y/n is an error."""
+    if path.is_dir() or not path.is_file():
+        raise DataError(f"{path} is not a labels.tsv file")
     out: dict[tuple[str, str], bool] = {}
+    in_notes = 0  # y/n typed one column too far right (an extra tab)
     with path.open(encoding="utf-8", newline="") as f:
         for n, row in enumerate(csv.DictReader(f, delimiter="\t"), start=2):
             raw = (row.get("label") or "").strip().lower()
             if not raw:
+                in_notes += (row.get("note") or "").strip().lower() in _LABELS
                 continue
             if raw not in _LABELS:
                 raise DataError(f"{path} line {n}: label {raw!r} is not y or n")
             out[(row["case_id"], row["item"])] = _LABELS[raw]
+    if in_notes:
+        raise DataError(
+            f"{path}: {in_notes} rows have y/n in the note column and an empty label: "
+            "the labels are one column too far right (an extra tab)"
+        )
     return out
 
 

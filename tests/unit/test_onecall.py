@@ -148,6 +148,11 @@ def test_labels_must_be_y_or_n(tmp_path: Path) -> None:
         read_labels(tsv)
     tsv.write_text("case_id\titem\tlabel\tnote\nq-1\tA1\tY\t\nq-1\tN1\t\t\n")
     assert read_labels(tsv) == {("q-1", "A1"): True}  # blanks are not labelled yet
+    tsv.write_text("case_id\titem\tlabel\tnote\nq-1\tA1\t\ty\nq-1\tN1\t\tn \n")
+    with pytest.raises(Exception, match="one column too far right"):
+        read_labels(tsv)
+    with pytest.raises(Exception, match="not a labels.tsv"):
+        read_labels(tmp_path)
 
 
 def test_label_sheets_refuse_test_answers(env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
