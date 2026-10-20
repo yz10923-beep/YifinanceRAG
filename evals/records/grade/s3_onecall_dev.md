@@ -24,3 +24,16 @@ Against pasting the same top 10 with no chat model (verbose-null, S2 config):
 | judge_task, Sonnet | 0.383 | 0.350 |
 | course_task | 0.383 | 0.567 |
 | instance_facts | 0.208 | 0.255 |
+
+## Re-scored after the ellipsis-quote fix (VM, 2026-10-20, Haiku, cached, $0)
+
+Run `20261020T095244Z_onecall-hybrid-4b+rerank_dev` (commit 93b913c). This is S4's bar.
+
+| rows | judge_assertions | judge_task |
+|---|---:|---:|
+| all (60) | 0.517 | 0.400 |
+| single-turn (24) | 0.750 | 0.708 |
+| progressive (36) | 0.361 | 0.194 |
+
+Only multi_document changed (judge_task 0.400 -> 0.500): the one answer whose
+"supported" verdict quoted two pieces joined by "..." now counts.

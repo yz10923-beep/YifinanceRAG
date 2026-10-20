@@ -411,7 +411,7 @@ goes to stderr, and the Ollama request timeout is 600 s. Tested (`make verify` 1
 **Done when** every grader passes its oracle/null/wrong checks and the judge's agreement
 with Yi's labels is reported.
 
-**Order for S3 (steps 1-5 done, step 6 built 2026-10-17; see below):**
+**Order for S3 (all steps done; S3 closed 2026-10-20, see "S3 closed"):**
 1. ~~Read before writing graders~~: done, see "S3 step 1" below.
 2. An answer record format (answer text, cited evidence ids, tool calls with their
    observed evidence ids, clarification turns) that the graders read and the S4 agent
@@ -767,15 +767,93 @@ refuse to guess without evidence (section 1) and fails rule-only answers on dyna
 questions (5.4), so a hedge on a progressive question is not a diagnosis. Labels stay
 frozen; no prompt change is proposed, so the held-out half is not needed for this fix.
 
+### S3 closed (2026-10-20)
+
+**Decided (Yi, 2026-10-20): the strict rubric.** An assertion is supported only when the
+answer states it as its conclusion for this question, every part of it; "最可能是 X，但需要
+确认" does not support X, and a checking procedure is not a conclusion. Reason: the
+benchmark asks the agent to refuse to guess without evidence and fails rule-only answers
+on dynamic questions; the progressive questions exist to reward looking things up.
+
+The graders S4 is measured with:
+- Deterministic (primary): doc / record / negative evidence per selector, sources and
+  operations, **instance facts**, `as_of` scope, clarification, citation grounding.
+- LLM judge (free-text assertions): **Claude Haiku 5.5**, effort low, verbatim-quote
+  checks (NFKC, ellipsis-joined pieces), last JSON verdict. Selftest on dev: oracle 1.000,
+  null 0, wrong 0, forbidden caught 60/60. Against Yi's 166 blind labels: required-item
+  kappa 0.36, stricter than Yi (49 vs 76 of 106), most disagreements = the rubric above.
+  Trial-to-trial gap on judge_task: 0.05 (smaller differences are not claims).
+- Course scorer port as a second score (comparability only).
+
+**The bar for S4** (one-call RAG, deepseek-v4-flash over the S2 top 10, dev, Haiku judge
+re-scored after the quote fix): judge_task **0.400** (single-turn 0.708, progressive
+**0.194**), instance facts 0.208, record evidence 0, doc evidence 0.714. Pasting the same
+chunks with no model: judge_task 0.367. Judge cost about $0.0003 an answer.
+
+Interview lines:
+- "The reference scorer passes a rule-only answer on all 180 questions that need account
+  data, and pasted chunks on 53% of all questions; I graded instance facts
+  deterministically and used an LLM judge only for free-text assertions."
+- "I calibrated the judge against 166 hand labels (kappa 0.36). The disagreements ran one
+  way; reading them showed the judge enforcing a stricter rubric than mine, which the
+  benchmark's spec supports, so I made the rule explicit and kept it. Two other 'judge
+  failures' turned out to be my harness (Unicode punctuation, ellipsis quotes)."
+- "One DeepSeek call over a 0.71-recall retriever scores 0.40, barely above pasting the
+  chunks (0.37): on progressive questions the answer needs the account's records."
+
 ## S4 agent
 
-Own loop over the vendored provider, answering with `deepseek-v4-flash` through the
-OpenAI-compatible provider built in S3; data tools under a policy file (column whitelists, scope enforced in
-SQL, row caps); ask-user for progressive-disclosure questions via the dataset's simulated
-user. A/Bs on dev: tool shape (per-doc-type search tools vs one `search_documents`),
-`disputed()` bounce, budgets. Course s1-s4 run as baselines on the same chat model.
+Own loop over the vendored provider, answering with `deepseek-v4-flash`; data tools under
+a policy file (column whitelists, scope enforced in SQL, row caps); ask-user via the
+dataset's simulated user; course s1-s4 as baselines on the same chat model.
 
-**Done when** the dev table compares our agent with course s1-s4 on the same model.
+**Done when** the dev table compares our agent with the one-call bar (judge_task 0.400,
+progressive 0.194, instance facts 0.208) and with course s1-s4 on the same model, every
+number graded by the closed S3 graders.
+
+**Plan (2026-10-20; about 5 working days, inside the 3-week box):**
+
+S4a. **Data tools + a fidelity test (no money; container).** `query_accounts`,
+`query_payments`, `query_webhooks`, `get_runtime_state`, with the 20 operations the
+benchmark names (`required_operations`). A policy file in the style of the course's
+`sources.toml`: per-operation table and column whitelist, required scope (`account_id`,
+`environment`) bound in SQL, allowed filters, row caps; SQLite opened read-only; runtime
+logs loaded read-only. Every returned row carries the dataset's `evidence_id`;
+`scenario_id`, `run_id` and tables `event_journal`, `scenario_executions`,
+`simulation_runs` are never reachable. The course's tools have no `as_of`; ours take one,
+since the benchmark grades historical questions on it. **Fidelity test:** called with each
+of the 535 selectors' parameters, our tools must return exactly that selector's evidence
+ids (zero rows for the 50 negatives). This test decides the `as_of` semantics per
+operation from the data, not by guess; any operation that can't be reproduced is
+recorded, not papered over. Plus a leakage test over real tool outputs.
+
+S4b. **The loop (no money; fakes).** About 200 lines, raw tool calls through our
+provider interface: search tools (S2 config: hybrid-4b + Haiku rerank, top 10), the data
+tools, `ask_user` (the harness passes the question to the dataset's simulated user and
+records the categories disclosed, within the question's turn budget), and
+`submit_answer` (answer text + cited evidence ids) to end. Budgets: steps, tokens,
+seconds. The harness writes the answer record (tool calls with observed ids,
+clarifications, usage) and a trace in kama's span format. Tests with scripted providers:
+a run that asks, looks up and submits; budget exhaustion; tool refusals returned as
+observations; infra errors to `errors.jsonl`.
+
+S4c. **First dev run (paid, Yi).** `yfr answer --system agent`, graded with Haiku.
+Compare paired with the one-call bar (`yfr compare` extended to grade runs: judge_task,
+instance facts, record evidence). Read 10 trajectories before changing anything.
+
+S4d. **A/Bs on dev, each one condition, chosen now** (at most three, by expected size):
+1. ask_user on vs off (S2 measured +0.147 recall from user facts; the largest lever);
+2. tool shape: per-doc-type `search_*` vs one `search_documents`;
+3. `disputed()`: bounce a submitted answer that cites an id no tool returned.
+Differences under the judge's 0.05 trial gap are not claims; report CIs.
+
+S4e. **Course s1-s4 on the same model (Yi runs the course code).** An adapter from the
+course's event log to our answer record, so its stages get the same graders; if that
+takes more than a day, report them with the course scorer only and say so.
+
+Decided in this plan, open for Yi: the agent's final answer is a tool call
+(`submit_answer`), not free text, so citations are structured; its system prompt states
+the strict rubric's intent (conclude only from evidence; ask for missing ids).
 
 ## S5 test once + deploy
 

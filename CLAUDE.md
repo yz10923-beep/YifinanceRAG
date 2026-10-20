@@ -401,18 +401,19 @@ About equal to pasting the chunks with no model (0.367 / 0.350).
 is inside Haiku's 0.027 trial gap). Agreement only fair: required-item kappa 0.36 (Haiku)
 / 0.40 (Sonnet); judges stricter than Yi (49 vs 76 of 106 supported; 23 vs 41 of 60
 answers pass). Labels frozen in `evals/records/grade/s3_labels_dev.tsv`.
+**S3 closed (2026-10-20).** Yi chose the strict rubric (hedged or partial answers don't
+support an assertion). Judge Haiku 5.5; after the ellipsis-quote fix the one-call bar is
+judge_task 0.400 (single 0.708, progressive 0.194), instance facts 0.208 (ROADMAP "S3
+closed": graders, numbers, interview lines). `make verify` 154 passed.
 
-## Next session: start here (S3 step 6: Yi's runs and labels)
-1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3", steps 5 and 6.
-2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo).
-3. Record what Yi sends: the one-call dev run (both judges' tables, a second Haiku
-   trial) and `yfr agree` output once labelled (step 5 is closed).
-4. Apply the judge decision rule (ROADMAP step 6), record the chosen judge, close S3
-   (ROADMAP results, interview line, Status), then S4.
-5. S3 is a gate, not a step to compress: no S4 agent variant is compared before its
-   graders pass their oracle / null / wrong checks, or S4's A/Bs (tool shape,
-   `disputed()`, budgets, ask-user) would be chosen by reading outputs. The time box
-   (about 3 weeks in all) is met by keeping S3's scope tight, not by skipping it.
+## Next session: start here (S4a: data tools and the fidelity test)
+1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3 closed" and "S4" (plan
+   S4a-S4e). The graders are closed: don't change them to make S4 look better.
+2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo); S4a
+   needs `data/generated/canonical/` and `evidence_resolution.jsonl`.
+3. S4a first: the four data tools under a policy file, and the test that our tools
+   reproduce all 535 selectors' evidence ids; record any operation that doesn't.
+4. No `main` branch exists on GitHub yet (2026-10-20); ask Yi before creating it.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,
   `s2_rerank_dev_paired.md`, `s2_user_facts_upper_bound.md`). The two rerank runs'
