@@ -840,3 +840,36 @@ def write_canonical(root: Path) -> Path:
             "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
         )
     return root
+
+
+# A stand-in for the dataset's src/flowpay_simulator/simulated_user.py (course material,
+# not in this repo): same class name and interface, minimal keyword matching.
+SIMULATOR = """
+from dataclasses import dataclass, field
+
+KEYWORDS = {"identifiers": ("编号", "id"), "occurrence_time": ("时间", "什么时候")}
+
+
+@dataclass
+class DeterministicSimulatedUser:
+    conversation: dict
+    disclosed_fact_ids: set = field(default_factory=set)
+
+    def answer(self, assistant_question):
+        q = assistant_question.lower()
+        asked = {c for c, words in KEYWORDS.items() if any(w in q for w in words)}
+        facts = [f for f in self.conversation.get("available_user_facts", [])
+                 if f.get("category") in asked and f["fact_id"] not in self.disclosed_fact_ids]
+        if not facts:
+            return "这些信息我现在还没整理出来。", []
+        for f in facts:
+            self.disclosed_fact_ids.add(f["fact_id"])
+        return " ".join(f["user_value"] for f in facts), facts
+"""
+
+
+def write_simulator(root: Path) -> Path:
+    path = root / "src/flowpay_simulator/simulated_user.py"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(SIMULATOR, encoding="utf-8")
+    return root

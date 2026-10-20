@@ -896,6 +896,40 @@ and enforce the plan's log retention, and I didn't guess their semantics: the to
 reproduce the benchmark's 535 gold lookups exactly, which found two rules (retention by
 plan, a 24-hour window) I would otherwise have missed."
 
+### S4b done (2026-10-20, container): the agent loop
+
+Built `src/yifinance_rag/answer/agent.py` (the loop, ~300 lines) and `answer/user.py`;
+`yfr answer --system agent [--tool-shape single|per-type] [--no-ask] [--max-steps N]
+[--limit N]` with the S2 retrieval flags.
+- **Loop:** one model call per step; its tool calls run in order and all their results go
+  back in one user turn. Tools: `search_documents` (or the five per-type `search_*` for the
+  A/B, each a folder filter over the same retriever, reranked per folder), the four data
+  tools (S4a), `ask_user`, `submit_answer` (answer + cited handles). It ends at
+  `submit_answer`; a text reply is nudged once, then taken; the last step (default 16)
+  offers only `submit_answer`.
+- **What the model never sees:** evidence ids (passages and rows get handles `D1`, `R1`;
+  cited handles are mapped back by the harness), the label (the runner builds the
+  simulated user from it), the clarification budget (a refusal says so only when hit).
+- **Simulated user:** the dataset's own `DeterministicSimulatedUser`, loaded from the
+  dataset by path (not copied, not reimplemented); budget = the question's
+  `max_clarification_turns` (0 for single-turn questions). Successful asks are recorded as
+  clarifications, not tool calls (the closed graders read tool calls as lookups).
+- **System prompt** (Chinese): ask only for what is missing; lookups need account and
+  environment; pass `as_of` for past times; conclude only from evidence, say what is
+  missing otherwise; support cases are not this account's facts; conclusion first.
+- **Caching and failures:** every model reply cached by the full request (+ trial), so a
+  rerun or a resume after a crash pays nothing for steps already taken; API errors after
+  retries write `errors.jsonl` and stop the run. Per question a trace in kama's span format
+  (`traces/<case>.jsonl`: agent > llm / tool spans).
+- **Tests:** 9 unit tests with scripted models (ask, look up, search, submit; last step
+  submit-only; refusals as observations; nudge; cache and trials; retries; spans; folder
+  filter and simulated user; CLI end to end, both tool shapes). Dataset test: **a fake
+  model that makes exactly the gold lookups, through the real harness on all 300
+  questions, gets full record and negative evidence and operations on every one, and
+  nothing sent to it carries an evidence id or benchmark bookkeeping.** It also caught a
+  real bug: the dataset's simulator module needs registering in `sys.modules` to load.
+  `make verify` 172 passed, `make data-test` 8 passed.
+
 ## S5 test once + deploy
 
 Final numbers on the 240 test questions, run once; a small deployed demo; README with the

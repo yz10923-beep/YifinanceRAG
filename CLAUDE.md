@@ -244,6 +244,8 @@ uv run yfr grade --system oracle|null|wrong|rule-only|verbose-null [retrieval fl
 uv run yfr grade --records FILE --name NAME   # grade a system's answer records
 uv run yfr grade ... --judge haiku|sonnet [--judge-trial N]   # + LLM judge (paid, cached)
 uv run yfr answer --system onecall [retrieval flags]   # deepseek-v4-flash, paid, cached
+uv run yfr answer --system agent [--tool-shape single|per-type] [--no-ask] [--max-steps N] \
+    [--limit N] [retrieval flags]   # the S4 agent; paid; replies cached, traces per case
 uv run yfr label-sheet RUN       # blind labels.md + labels.tsv for a run's dev answers
 uv run yfr agree LABELS.tsv RUN [RUN ...]   # judge vs Yi's labels: agreement, kappa
 ```
@@ -254,7 +256,7 @@ benchmark `Question` vs `Label`, pins, `check_dataset`), `src/yifinance_rag/retr
 `policy.toml`, `data.py`), `src/yifinance_rag/grade/` (answer
 record, grader-side `Truth`, deterministic graders, instance-fact atoms, the course scorer
 port, no-LLM baselines, selftest, judge, calibration), `src/yifinance_rag/answer/` (systems
-that answer: `onecall.py`), `src/yifinance_rag/llm/` (Anthropic and OpenAI-compatible
+that answer: `onecall.py`, `agent.py`, `user.py`), `src/yifinance_rag/llm/` (Anthropic and OpenAI-compatible
 providers, `cached.py`, pricing, retry), `src/yifinance_rag/embed/` (Ollama
 client pinned to the course's model digest, SQLite embedding cache),
 `src/yifinance_rag/cli.py` (`yfr`), `tests/synthetic.py` (a tiny dataset in the real
@@ -411,15 +413,19 @@ closed": graders, numbers, interview lines). `make verify` 154 passed.
 + `data.py`; 4 tools, 20 operations, read-only, scope bound in SQL, `as_of`, retention by
 plan, 24-hour log window). **Reproduce all 535 benchmark selectors exactly**; 0 leaks in
 real outputs. `make verify` 163 passed, `make data-test` 7 passed (ROADMAP "S4a done").
+**S4b done (2026-10-20, container):** the agent loop (`answer/agent.py`, `answer/user.py`;
+`yfr answer --system agent`): search + data tools + `ask_user` (the dataset's simulated
+user) + `submit_answer`; handles instead of evidence ids; cached replies; traces. An
+oracle-driven fake model through the real harness gets full evidence on all 300 questions
+with no leaks. `make verify` 172 passed, `make data-test` 8 passed. Next: S4c (Yi, paid).
 
-## Next session: start here (S4b: the agent loop)
+## Next session: start here (S4c: the first paid agent run)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3 closed" and "S4" (plan
    S4a-S4e). The graders are closed: don't change them to make S4 look better.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo); S4a
    needs `data/generated/canonical/` and `evidence_resolution.jsonl`.
-3. S4a is done (data tools, 535/535). Next S4b: the loop (search tools with the S2
-   config, the data tools, `ask_user` via the simulated user, `submit_answer` with cited
-   ids), budgets, records and traces; scripted-provider tests only, no money.
+3. S4a and S4b are done. S4c: Yi runs a smoke run (`--limit 5`) then the dev run, graded
+   with Haiku; compare with the one-call bar; read ~10 trajectories before any change.
 4. No `main` branch exists on GitHub yet (2026-10-20); ask Yi before creating it.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,

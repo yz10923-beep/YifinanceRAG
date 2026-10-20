@@ -49,7 +49,8 @@ class AnswerRecord(BaseModel):
     cited: list[str] = Field(default_factory=list)  # evidence ids the answer cites
     tool_calls: list[ToolCall] = Field(default_factory=list)
     clarifications: list[Clarification] = Field(default_factory=list)
-    usage: dict[str, float | int | None] = Field(default_factory=dict)  # tokens, $, seconds
+    # tokens, $, seconds, steps; `stop` says how the run ended (submitted, text, budget)
+    usage: dict[str, float | int | str | None] = Field(default_factory=dict)
 
     def observed(self) -> set[str]:
         """Every evidence id some successful tool call returned."""

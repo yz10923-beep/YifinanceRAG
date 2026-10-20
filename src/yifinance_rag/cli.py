@@ -14,7 +14,7 @@ yfr grade --system oracle|null|wrong|rule-only|verbose-null
                                         grade a baseline; verbose-null takes the retrieval
                                         flags (default bm25)
 yfr grade --records FILE --name NAME    grade a system's answer records
-yfr answer --system onecall [retrieval flags]
+yfr answer --system onecall|agent [retrieval flags]
                                         the one-call RAG baseline on deepseek-v4-flash (paid)
 yfr label-sheet RUN                     a blind label sheet for a run's dev answers
 yfr agree LABELS.tsv RUN [RUN ...]      judge verdicts vs Yi's labels (Cohen's kappa)
@@ -28,13 +28,16 @@ import argparse
 import json
 import subprocess
 import sys
+from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
 import psycopg
 
+from yifinance_rag.answer import agent as agent_mod
 from yifinance_rag.answer import onecall
+from yifinance_rag.answer.user import SimulatedUser
 from yifinance_rag.config import REPO_ROOT, ConfigError, Settings, cache_dir, load_settings
 from yifinance_rag.data.benchmark import (
     Label,
@@ -47,6 +50,7 @@ from yifinance_rag.data.benchmark import (
 from yifinance_rag.data.check import check_dataset
 from yifinance_rag.data.corpus import (
     Chunk,
+    Doc,
     EvidenceMap,
     benchmark_chunks,
     chunk_set_hash,
@@ -86,6 +90,8 @@ from yifinance_rag.retrieval.retrievers import (
     RandomRetriever,
     Retriever,
 )
+from yifinance_rag.tools.data import DataStore, DataTools, iso_ms
+from yifinance_rag.trace.tracer import JsonlSpanWriter, Tracer
 
 RETRIEVERS = (
     "bm25",
@@ -547,6 +553,8 @@ def cmd_answer(
     chunks = benchmark_chunks(load_docs(ds))
     questions, labels = load_benchmark(ds)
     picked = select(questions, labels, args.split)
+    if args.limit:
+        picked = picked[: args.limit]
     try:
         retriever, reranker, embedder = build_retriever(args, settings, chunks, labels, embedder)
     except ValueError as e:
@@ -555,6 +563,10 @@ def cmd_answer(
     if args.retriever in ("oracle", "wrong-oracle"):
         print("a system can't retrieve with an oracle: it reads the labels")
         return 2
+    if args.system == "agent":
+        if reranker:
+            reranker.close()
+        return _answer_agent(ds, settings, args, chunks, labels, picked, embedder, chat)
     stats = CallStats()
     caller = CachedCaller(
         chat or default_chat(settings),
@@ -610,6 +622,139 @@ def cmd_answer(
     print(
         f"written to {out}\ngrade: uv run yfr grade --records {out / 'records.jsonl'} "
         f"--name {system.name} --judge haiku"
+    )
+    return 0
+
+
+def _search_tools(
+    args: argparse.Namespace,
+    settings: Settings,
+    chunks: Sequence[Chunk],
+    labels: Mapping[str, Label],
+    docs: Sequence[Doc],
+    embedder: Embedder | None,
+) -> tuple[list[agent_mod.SearchTool], list[LLMReranker]]:
+    """The search tools for one tool shape, each over the S2 retrieval config."""
+    if args.tool_shape == "single":
+        full, reranker, _ = build_retriever(args, settings, chunks, labels, embedder)
+        tool = agent_mod.SearchTool(
+            "search_documents", agent_mod.SEARCH_TOOLS["search_documents"], full
+        )
+        return [tool], [reranker] if reranker else []
+    base_args = argparse.Namespace(**{**vars(args), "rerank": "none"})
+    base, _, _ = build_retriever(base_args, settings, chunks, labels, embedder)
+    doc_tool = Context.from_docs(docs).doc_tool
+    tools, rerankers = [], []
+    for name in agent_mod.SEARCH_TOOLS:
+        if name == "search_documents":
+            continue
+        retriever: Retriever = agent_mod.FolderFilter(base, name, doc_tool)
+        if args.rerank != "none":
+            model = RERANK_MODELS[args.rerank]
+            reranker = LLMReranker(
+                retriever,
+                default_provider(settings, model),
+                model=model,
+                effort="low",
+                cache_path=cache_dir(settings) / "rerank.sqlite",
+                depth=args.rerank_depth,
+                trial=args.trial,
+            )
+            rerankers.append(reranker)
+            retriever = reranker
+        tools.append(agent_mod.SearchTool(name, agent_mod.SEARCH_TOOLS[name], retriever))
+    return tools, rerankers
+
+
+def _answer_agent(
+    ds: Dataset,
+    settings: Settings,
+    args: argparse.Namespace,
+    chunks: Sequence[Chunk],
+    labels: Mapping[str, Label],
+    picked: Sequence[Question],
+    embedder: Embedder | None,
+    chat: Callable[[], LLMProvider] | None,
+) -> int:
+    """The S4 agent over the questions. This runner reads each label's conversation to
+    build the simulated user; the agent itself only gets the question and the replies."""
+    docs = load_docs(ds)
+    search, rerankers = _search_tools(args, settings, chunks, labels, docs, embedder)
+    store = DataStore(ds)
+    agent = agent_mod.Agent(
+        chat or default_chat(settings),
+        model=CHAT_MODEL,
+        options=json.dumps(CHAT_OPTIONS, sort_keys=True),
+        search=search,
+        emap=EvidenceMap(chunks),
+        data=DataTools(store),
+        cache=agent_mod.ResponseCache(cache_dir(settings) / "agent.sqlite"),
+        now=iso_ms(store.freeze_at),
+        config=agent_mod.AgentConfig(
+            max_steps=args.max_steps, ask_user=not args.no_ask, trial=args.answer_trial
+        ),
+    )
+    retriever_name = search[0].retriever.name.split("|")[0]
+    out = _run_dir(Path(args.out), f"{agent.name}-{retriever_name}_{args.split}")
+    traces = out / "traces"
+    agent.tracer_factory = lambda cid: Tracer(cid, JsonlSpanWriter(traces / f"{cid}.jsonl"))
+    records: list[AnswerRecord] = []
+    try:
+        for n, q in enumerate(picked, start=1):
+            conversation = labels[q.case_id].raw.get("conversation")
+            assert isinstance(conversation, dict)
+            user = SimulatedUser.for_conversation(ds, conversation)
+            budget = int(conversation.get("max_clarification_turns") or 0)
+            try:
+                records.append(agent.answer(q, user, budget))
+            except LLMError as e:
+                row = {"case_id": q.case_id, "kind": e.kind, "status": e.status, "error": str(e)}
+                (out / "errors.jsonl").write_text(json.dumps(row) + "\n")
+                raise
+            print(f"  {n}/{len(picked)} {records[-1].usage.get('stop')}", file=sys.stderr)
+    finally:
+        agent.close()
+        agent.cache.close()
+        store.close()
+        for r in rerankers:
+            r.close()
+    write_records(out / "records.jsonl", records)
+    totals: dict[str, object] = {
+        k: sum(int(r.usage.get(k) or 0) for r in records)
+        for k in ("llm_calls", "cached_calls", "input_tokens", "output_tokens", "cache_read_tokens")
+    }
+    costs = [r.usage.get("cost_usd") for r in records]
+    totals["cost_usd"] = (
+        None if any(c is None for c in costs) else sum(float(c or 0) for c in costs)
+    )
+    stops = Counter(str(r.usage.get("stop")) for r in records)
+    summary = {
+        "system": agent.name,
+        "config": agent.config_dict(),
+        "split": args.split,
+        "cases": len(records),
+        "usage": totals,
+        "stops": dict(stops),
+        "rerank": [r.stats.__dict__ for r in rerankers],
+        "release_manifest_sha256": sha256_file(ds.path(RELEASE_MANIFEST)),
+        "split_sha256": split_hash(labels.values()),
+        "git_commit": _git_commit(),
+        "created": out.name.split("_", 1)[0],
+    }
+    (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+    cost = (
+        "unknown (no DeepSeek price recorded)"
+        if totals["cost_usd"] is None
+        else f"${totals['cost_usd']:.4f}"
+    )
+    print(
+        f"{agent.name} on {args.split}: {len(records)} answers, stops {dict(stops)}; "
+        f"{totals['llm_calls']} model calls ({totals['cached_calls']} cached), "
+        f"{totals['input_tokens']} in / {totals['output_tokens']} out tokens, {cost}"
+    )
+    print(
+        f"written to {out}\ngrade: uv run yfr grade --records {out / 'records.jsonl'} "
+        f"--name {agent.name} --judge haiku"
     )
     return 0
 
@@ -722,7 +867,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_retriever_args(grd)
     grd.add_argument("--out", default=str(REPO_ROOT / "evals" / "results" / "grade"))
     ans = sub.add_parser("answer", help="run a system and write its answer records (paid)")
-    ans.add_argument("--system", choices=["onecall"], default="onecall")
+    ans.add_argument("--system", choices=["onecall", "agent"], default="onecall")
+    ans.add_argument("--tool-shape", choices=["single", "per-type"], default="single")
+    ans.add_argument("--no-ask", action="store_true", help="agent: no ask_user tool (A/B)")
+    ans.add_argument("--max-steps", type=int, default=16, help="agent: model calls per question")
+    ans.add_argument("--limit", type=int, default=0, help="only the first N questions (smoke run)")
     ans.add_argument("--retriever", choices=RETRIEVERS, default="bm25")
     add_retriever_args(ans)
     ans.add_argument("--answer-trial", type=int, default=0, help="answer again (variance)")
