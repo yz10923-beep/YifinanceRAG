@@ -747,6 +747,26 @@ labels `s3_labels_dev.tsv`, 60 one-call dev answers, 166 items, blind):
   ~30 Yi-yes / judge-no items (pattern, not case-by-case relabelling); if a prompt change
   follows, its agreement must be measured on labels it was not tuned on.
 
+**Disagreement diagnosis (container, 2026-10-20).** Seeded split (20261020) of the 60
+answers: 30 read, 30 held out (not read). In the read half, 19 disagreements:
+- 1 harness error: the judge said "supported" and quoted two verbatim pieces joined by
+  "..."; the quote check wanted one continuous span. **Fixed:** pieces split at "..." /
+  "…" must each be in the answer, in order (the only unverified quote in the run).
+- ~13: progressive answers that hedge ("最可能是…，但目前无法确认", "需要补充信息") or give
+  a checking procedure instead of the conclusion. Yi credited the likely conclusion; the
+  judge applied its prompt's rule that a hedged statement is not support.
+- ~3: multi-part assertions with one part missing (e.g. Scale not named; "修改只影响后续
+  事件" absent): the judge requires every part.
+- 1 each way on single items (one judge credit Yi didn't give; Yi's only "y" on a
+  forbidden claim).
+Over all 60 (descriptive): 32 of 36 disagreements are Yi "y" / judge "n"; required-item
+agreement 0.74 single-turn, 0.64 progressive.
+So the gap is mostly a **rubric** difference (does "most likely X" support X?), not judge
+malfunction. The benchmark's intent favours the strict reading: its spec asks the agent to
+refuse to guess without evidence (section 1) and fails rule-only answers on dynamic
+questions (5.4), so a hedge on a progressive question is not a diagnosis. Labels stay
+frozen; no prompt change is proposed, so the held-out half is not needed for this fix.
+
 ## S4 agent
 
 Own loop over the vendored provider, answering with `deepseek-v4-flash` through the

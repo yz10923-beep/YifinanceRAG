@@ -103,6 +103,23 @@ def _squash(text: str) -> str:
     return "".join(unicodedata.normalize("NFKC", text).split())
 
 
+_ELLIPSIS = re.compile(r"\.{3,}|…+")
+
+
+def quoted(quote: str, body: str) -> bool:
+    """The quote is in the (squashed) answer. Judges join distant pieces with "..." or
+    "…": then every piece must be in the answer, in order."""
+    pieces = [_squash(p) for p in _ELLIPSIS.split(quote)]
+    pieces = [p for p in pieces if p]
+    at = 0
+    for piece in pieces:
+        found = body.find(piece, at)
+        if found < 0:
+            return False
+        at = found + len(piece)
+    return bool(pieces)
+
+
 def final_object(text: str) -> dict[str, object] | None:
     """The last JSON object in the reply that has a verdict section. Judges sometimes
     write a verdict, reconsider in prose and write a corrected one; the last is final."""
@@ -140,7 +157,7 @@ def parse_verdicts(text: str, truth: Truth, answer: str) -> Verdicts:
             if verdict == negative:
                 target[str(item["id"])] = False
             elif verdict == positive:
-                real = bool(_squash(quote)) and _squash(quote) in body
+                real = quoted(quote, body)
                 if not real:
                     out.unverified.append(str(item["id"]))
                 target[str(item["id"])] = real

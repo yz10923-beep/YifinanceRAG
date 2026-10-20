@@ -95,6 +95,17 @@ def test_quotes_may_use_ascii_punctuation_and_the_last_verdict_counts(tmp_path: 
     assert v.complete and v.required == {"A1": True, "A2": False} and v.unverified == []
 
 
+def test_a_quote_may_join_verbatim_pieces_with_an_ellipsis() -> None:
+    from yifinance_rag.grade.judge import quoted
+
+    body = "".join("结论：不能沿用上次的根因。两者含义不同；本次应按资金不足处理。".split())
+    assert quoted("不能沿用上次的根因...本次应按资金不足处理。", body)
+    assert quoted("不能沿用上次的根因……本次应按资金不足处理", body)
+    assert not quoted("本次应按资金不足处理...不能沿用上次的根因", body)  # out of order
+    assert not quoted("不能沿用上次的根因...本次可以重试", body)  # an invented piece
+    assert not quoted("...", body) and not quoted("", body)
+
+
 def test_forbidden_claims_flag_the_task(tmp_path: Path) -> None:
     t = _truth(tmp_path)
     answer = ANSWER + "不过超过窗口仍可人工退款。"
