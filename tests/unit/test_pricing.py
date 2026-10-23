@@ -60,4 +60,5 @@ def test_deepseek_flash_reproduces_the_billed_hours() -> None:
     ]
     for (miss, hit, out), dollars in billed:
         usage = {"input_tokens": miss, "cache_read_input_tokens": hit, "output_tokens": out}
-        assert cost_usd("deepseek-v4-flash", usage) == pytest.approx(dollars, abs=1e-9)
+        for served in ("deepseek-v4-flash", "deepseek-flash"):  # requested and served id
+            assert cost_usd(served, usage) == pytest.approx(dollars, abs=1e-9)

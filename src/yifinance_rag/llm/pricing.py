@@ -40,6 +40,9 @@ PRICES: dict[str, Rates] = {
     # quoted by Yi 2026-10-23), so a run in peak hours costs up to 2x this. DeepSeek has no
     # cache-write charge: a miss is billed as input, hence cache_write = input.
     "deepseek-v4-flash": Rates(0.15, 0.15, 0.003, 0.60),
+    # ...and the API reports the served model under the billed name (seen in replies and
+    # the course's event logs, 2026-10-23); cost is priced by the served id.
+    "deepseek-flash": Rates(0.15, 0.15, 0.003, 0.60),
 }
 
 # Haiku 5.5 has a second rate card for a prompt over 100K tokens, where the prompt counts

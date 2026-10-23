@@ -1123,7 +1123,43 @@ same questions, same simulated user, same graders.
   full agent 18%. The difference is the questions that need the account's own records."
   (Dev only; the test numbers come from S5.)
 
+### S4 run-to-run variance (2026-10-23, VM): one more trial of the S5 agent on dev
+
+Record: `evals/records/grade/s4_agent_trial1_dev.md`. Same config, new DeepSeek replies.
+- judge_task 0.741 -> 0.690 (paired -0.052, CI [-0.17, +0.07], 13 of 58 cases flip).
+  Record evidence, instance facts and doc evidence move by <= 0.04. **The agent's own
+  noise on a 60-question judged score is about 0.05**, the same size as the judge's
+  trial gap.
+- So the per-type vs single-tool difference (+0.089, S4d) is noise-sized: trial 1 of
+  per-type (0.690) is level with single (0.672). Per-type stays the S5 config (decided),
+  as one condition, not as a measured win.
+- Against the course's best stage: the two-trial mean (0.716) is still +0.17 over s2
+  (0.550), about 3x our own noise.
+- Bug found: DeepSeek replies name the served model `deepseek-flash` (the billed name),
+  so priced-by-served-id costs were None. Added to `llm/pricing.py`, tested against the
+  bill. Earlier runs keep cost None in their summaries; test runs will be priced.
+
 ## S5 test once + deploy
+
+### S5 plan, fixed before any test result exists (2026-10-23)
+
+Systems, each run **once** on the 240 test questions (`--split test --final`, Yi only),
+with the dev configs exactly as recorded; every result is reported, good or bad:
+
+| system | config |
+|---|---|
+| **ours: agent-per-type** | `--system agent --tool-shape per-type`, ask_user on, 16 steps, hybrid-4b + Haiku rerank top 20 -> 10, trial 0 |
+| one-call baseline | `--system onecall`, hybrid-4b + Haiku rerank, trial 0 |
+| course s1, s2, s3, s4 | `scripts/course_stages.py --split test --final`, the course at `fdeda6b`, its own config |
+
+- Chat model `deepseek-v4-flash` (thinking off) for all; judge Haiku 5.5, judge trial 0;
+  graders as closed in S3, no changes.
+- Headline: ours vs course s2 (its best dev stage) on judge_task, paired, with CI; also
+  vs every stage, vs one-call, and course s4 on progressive questions as well (S4e).
+  Report the dev run-to-run noise (0.05) next to it.
+- Infra failures (`errors.jsonl`, `<stage>.errors.jsonl`) are rerun until clean; they
+  are never scored. Nothing is tuned, rerun for a better score, or dropped after a test
+  result is seen.
 
 Final numbers on the 240 test questions, run once; a small deployed demo; README with the
 results table and cost per question.
