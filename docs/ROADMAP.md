@@ -930,6 +930,38 @@ Built `src/yifinance_rag/answer/agent.py` (the loop, ~300 lines) and `answer/use
   real bug: the dataset's simulator module needs registering in `sys.modules` to load.
   `make verify` 172 passed, `make data-test` 8 passed.
 
+### S4c first run (2026-10-23, VM run by Yi; analysis in the container)
+
+The agent as built in S4b (one `search_documents`, ask_user on, Haiku-graded) on dev.
+Summary and tables: `evals/records/grade/s4c_agent_dev.md`.
+
+| metric | one-call bar | agent |
+|---|---:|---:|
+| judge_task (all / single / progressive) | 0.400 / 0.708 / 0.194 | **0.672** / 0.833 / 0.559 |
+| judge_assertions | | 0.810 |
+| instance_facts | 0.208 | 0.934 |
+| record_evidence / negative_found | 0.000 / | 0.972 / 0.909 |
+| as_of / clarification | | 0.871 / 0.791 |
+| course_task | 0.383 | 0.600 (15/2/43, p 0.002) |
+
+- **The loop earns its cost on dev,** almost all on progressive questions: instance facts
+  36/0/0 against one-call, CI [+0.66, +0.78]; record evidence 35/0/1. Doc evidence is
+  unchanged (0.714 vs 0.728, CI spans 0): the agent searches about as well as one fixed
+  retrieval, so its gain is asking and looking up, not retrieval.
+- **Grader bug found and fixed (applies to all systems):** instance-fact atoms missed
+  numbers written with thousands separators (`12,000`). Fix in `grade/facts.py`, unit
+  test added, selftest unchanged. Agent instance_facts 0.919 -> 0.934; one-call 0.208 ->
+  0.208. The judge is not affected.
+- **Behaviour, from the trajectories:** 4.5 steps a question (max 8), 21 s. It asked on
+  35 of 36 progressive questions, mostly once, for 3-4 fact categories, never for more
+  than needed. Flaws: it tried `ask_user` on 22 of 24 single-turn questions (refused,
+  one wasted step each); on one multi_source question it never called `ask_user` and
+  wrote its questions into the answer. Two questions lose instance-fact atoms on
+  assertions listing 20 request ids each (a benchmark artifact: the answer would have to
+  list them all).
+- Open: the paired judge_task table (needs the judged runs on the VM) and DeepSeek's
+  price (cost is None until Yi reads it).
+
 ## S5 test once + deploy
 
 Final numbers on the 240 test questions, run once; a small deployed demo; README with the

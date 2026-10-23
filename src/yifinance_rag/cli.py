@@ -8,7 +8,8 @@ yfr retrieval --retriever hybrid        RRF over BM25 + dense-809 (S2); --embed-
                                         the Qwen3-Embedding size for dense-809 and hybrid
 yfr retrieval --retriever hybrid --embed-model qwen3-embedding:4b --rerank haiku
                                         reorders the top 20 with Claude Haiku (costs money)
-yfr compare RUN_A RUN_B                 paired per-case comparison of two runs
+yfr compare RUN_A RUN_B                 paired per-case comparison of two runs (retrieval
+                                        or grade runs)
 yfr grade --selftest                    every grader against the no-LLM baselines (S3)
 yfr grade --system oracle|null|wrong|rule-only|verbose-null
                                         grade a baseline; verbose-null takes the retrieval
@@ -68,6 +69,12 @@ from yifinance_rag.embed.ollama import (
 from yifinance_rag.grade.baselines import SYSTEMS, build
 from yifinance_rag.grade.calibrate import agreement, read_labels, write_label_sheet
 from yifinance_rag.grade.calibrate import render as render_agreement
+from yifinance_rag.grade.compare import (
+    DEFAULT_METRICS,
+    compare_grades,
+    is_grade_run,
+    load_grade_run,
+)
 from yifinance_rag.grade.graders import Context
 from yifinance_rag.grade.judge import JUDGE_MODELS, Judge
 from yifinance_rag.grade.record import AnswerRecord, read_records, write_records
@@ -820,6 +827,8 @@ def _label(summary: dict[str, object]) -> str:
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
+    if is_grade_run(args.run_a) and is_grade_run(args.run_b):
+        return _compare_grades(args)
     summary_a, a = load_run(args.run_a)
     summary_b, b = load_run(args.run_b)
     for key in ("split", "split_sha256", "release_manifest_sha256"):
@@ -834,6 +843,23 @@ def cmd_compare(args: argparse.Namespace) -> int:
             continue
         rows = compare(a, b, name)
         print(render(rows, _label(summary_a), _label(summary_b), name))
+        print()
+    return 0
+
+
+def _compare_grades(args: argparse.Namespace) -> int:
+    summary_a, a = load_grade_run(args.run_a)
+    summary_b, b = load_grade_run(args.run_b)
+    for key in ("split", "split_sha256", "release_manifest_sha256"):
+        if summary_a.get(key) != summary_b.get(key):
+            print(f"error: the runs differ in {key}; a paired comparison needs the same cases")
+            return 1
+    for name in args.metric or DEFAULT_METRICS:
+        rows = compare_grades(a, b, name)
+        if not rows:
+            print(f"{name}: no case has a value in both runs\n")
+            continue
+        print(render(rows, str(summary_a["system"]), str(summary_b["system"]), name))
         print()
     return 0
 
@@ -885,7 +911,12 @@ def build_parser() -> argparse.ArgumentParser:
     cmp = sub.add_parser("compare", help="paired comparison of two runs (B against A)")
     cmp.add_argument("run_a", type=Path)
     cmp.add_argument("run_b", type=Path)
-    cmp.add_argument("--metric", action="append", help="default: recall@10 and mrr@10")
+    cmp.add_argument(
+        "--metric",
+        action="append",
+        help="default: recall@10, mrr@10, recall@20; for grade runs judge_task, "
+        "instance_facts, record_evidence, doc_evidence",
+    )
     return parser
 
 

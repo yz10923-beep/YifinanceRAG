@@ -33,8 +33,12 @@ _WORD = re.compile(r"(?<![a-z0-9_])[a-z][a-z_]*[a-z](?![a-z0-9_])")
 STOP_WORDS = frozenset({"utc", "post", "get", "http", "id", "api", "usd", "scenario"})
 
 
+# Thousands separators: "1,600" and "10，000" are the numbers 1600 and 10000.
+_THOUSANDS = re.compile(r"(?<=\d)[,，](?=\d{3}(?!\d))")
+
+
 def normalize(text: str) -> str:
-    text = unicodedata.normalize("NFKC", text).lower()
+    text = _THOUSANDS.sub("", unicodedata.normalize("NFKC", text).lower())
 
     def iso(m: re.Match[str]) -> str:
         day = f"{m[1]}-{m[2]}"

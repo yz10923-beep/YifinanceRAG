@@ -417,15 +417,22 @@ real outputs. `make verify` 163 passed, `make data-test` 7 passed (ROADMAP "S4a 
 `yfr answer --system agent`): search + data tools + `ask_user` (the dataset's simulated
 user) + `submit_answer`; handles instead of evidence ids; cached replies; traces. An
 oracle-driven fake model through the real harness gets full evidence on all 300 questions
-with no leaks. `make verify` 172 passed, `make data-test` 8 passed. Next: S4c (Yi, paid).
+with no leaks. `make verify` 172 passed, `make data-test` 8 passed.
+**S4c first run (VM, 2026-10-23):** agent judge_task 0.672 vs the one-call bar 0.400
+(progressive 0.559 vs 0.194); instance facts 0.934 vs 0.208 (36/0/0); doc evidence
+unchanged. A grader fix for all systems (thousands separators in instance facts: agent
+0.919 -> 0.934, one-call unchanged). Flaws: asks on 22/24 single-turn questions (refused);
+one question never asked. `yfr compare` now pairs grade runs. `make verify` 174 passed
+(ROADMAP "S4c first run").
 
-## Next session: start here (S4c: the first paid agent run)
+## Next session: start here (S4c paired judge table, then S4d A/Bs)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3 closed" and "S4" (plan
    S4a-S4e). The graders are closed: don't change them to make S4 look better.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo); S4a
    needs `data/generated/canonical/` and `evidence_resolution.jsonl`.
-3. S4a and S4b are done. S4c: Yi runs a smoke run (`--limit 5`) then the dev run, graded
-   with Haiku; compare with the one-call bar; read ~10 trajectories before any change.
+3. S4a-S4b done, S4c run. Open: Yi re-grades the agent run (cached, free) and sends the
+   paired `yfr compare` judge_task table and DeepSeek's price. Then S4d (ROADMAP plan),
+   each A/B one condition on dev.
 4. No `main` branch exists on GitHub yet (2026-10-20); ask Yi before creating it.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,

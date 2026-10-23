@@ -1,0 +1,43 @@
+{
+  "system": "agent-single",
+  "config": {
+    "model": "deepseek-v4-flash",
+    "options": "{\"thinking\": {\"type\": \"disabled\"}}",
+    "search_tools": {
+      "search_documents": "hybrid-4b+rerank"
+    },
+    "max_steps": 16,
+    "search_k": 10,
+    "passage_chars": 1500,
+    "ask_user": true,
+    "trial": 0,
+    "system_sha256": "b886ef0b199d6f6669b58e883eabfba9dcb302fb40b33db96df1f37c61f2c2b3"
+  },
+  "split": "dev",
+  "cases": 60,
+  "usage": {
+    "llm_calls": 254,
+    "cached_calls": 17,
+    "input_tokens": 240393,
+    "output_tokens": 116807,
+    "cache_read_tokens": 813440,
+    "cost_usd": null
+  },
+  "stops": {
+    "submitted": 60
+  },
+  "rerank": [
+    {
+      "calls": 127,
+      "cached": 13,
+      "input_tokens": 394235,
+      "output_tokens": 24120,
+      "cost_usd": 0.0514835,
+      "fallbacks": 13
+    }
+  ],
+  "release_manifest_sha256": "2e50d09e8898ce0aa4eb3f02698ac0ef76484f9e9c90c4ffac318d12d3e77a5f",
+  "split_sha256": "152d6325581bf5859919b1bb0da912fb6e8df555795105406610d48325c9f3d6",
+  "git_commit": "4ed1bd4fd27424555ddbf0dfecf01e6a62713f2c",
+  "created": "20261023T001337Z"
+}

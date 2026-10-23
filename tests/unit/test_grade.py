@@ -11,6 +11,7 @@ from yifinance_rag.data.benchmark import load_benchmark, select
 from yifinance_rag.data.corpus import load_docs
 from yifinance_rag.data.dataset import DataError, Dataset
 from yifinance_rag.grade.baselines import SYSTEMS, build, wrong_partner
+from yifinance_rag.grade.compare import compare_grades, load_grade_run
 from yifinance_rag.grade.course import course_score, supported, violated
 from yifinance_rag.grade.facts import keys, normalize, states
 from yifinance_rag.grade.graders import Context, grade
@@ -51,6 +52,12 @@ def test_atoms_are_values_not_template_words() -> None:
         "内没有查到 get_payment 对应记录。"
     )
     assert keys(scope) == ["pay_bm_001"]
+
+
+def test_numbers_may_carry_thousands_separators() -> None:
+    assert states("总请求 1,600，成功 1，200", "1600") and states("金额 10,000 USD", "10000")
+    assert not states("编号 1,2,3", "123")  # a list is not a number
+    assert normalize("2026 年 08 月 02 日") == "08-02"
 
 
 def test_atoms_match_whole_tokens_only() -> None:
@@ -216,3 +223,27 @@ def test_cli_grades_baselines_and_records(
     assert json.loads((again / "summary.json").read_text())["rows"] == summary["rows"]
     assert main(["grade", "--system", "verbose-null", "--out", str(out)]) == 0
     assert main(["grade", "--system", "null", "--split", "test", "--out", str(out)]) == 2
+
+
+def test_cli_compares_two_grade_runs_paired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = write_dataset(tmp_path / "flowpay-dataset", graded=True)
+    monkeypatch.setenv("FLOWPAY_DATASET_ROOT", str(root))
+    monkeypatch.chdir(tmp_path)
+    runs = {}
+    for system in ("null", "oracle"):
+        out = tmp_path / system
+        assert main(["grade", "--system", system, "--out", str(out)]) == 0
+        (runs[system],) = out.iterdir()
+    capsys.readouterr()
+    assert main(["compare", str(runs["null"]), str(runs["oracle"])]) == 0
+    text = capsys.readouterr().out
+    assert "instance_facts" in text and "null" in text and "oracle" in text
+    _, a = load_grade_run(runs["null"])
+    _, b = load_grade_run(runs["oracle"])
+    (all_row,) = [r for r in compare_grades(a, b, "instance_facts") if r.group == "all"]
+    assert all_row.mean_b == 1.0 and all_row.wins > 0 and all_row.losses == 0
+    assert compare_grades(a, b, "judge_task") == []  # no judge in either run
+    assert main(["compare", str(runs["null"]), str(runs["null"]), "--metric", "judge_task"]) == 0
+    assert "no case has a value" in capsys.readouterr().out
