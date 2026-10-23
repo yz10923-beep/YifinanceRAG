@@ -1094,12 +1094,30 @@ same questions, same simulated user, same graders.
   finds almost no records (0.019), just like our `--no-ask` (0.014).
 - **Coverage vs behaviour:** the course's tables cap record evidence at 0.787 on dev
   (22 of 36 cases fully readable); s4 reaches 0.322. Most of its gap is behaviour.
-- **course-s4 single-turn 0.167 (s2: 0.875) needs a look before it is quoted.** Likely the
-  course's s4 asks a clarifying question even on single-turn questions, and the course's
-  own protocol (`play()`: one submission when the budget is 0) then scores the question
-  as the answer; its single-turn doc evidence (0.229) says it often answered before
-  searching. To check in the s4 export; until then, compare with s4 on progressive
-  questions only (0.194 vs ours 0.588).
+- **course-s4, read in its export (2026-10-23): its low score is mostly protocol, not
+  knowledge.**
+  - On **17 of 24 single-turn questions** s4's whole answer is a request for account /
+    environment / ids (about 3 s, usually no search). The course's own `play()` gives a
+    single-turn question one submission, so that request is graded as the answer. Our
+    harness differs: a refused `ask_user` comes back as an observation and the agent
+    goes on. So most of the single-turn gap vs s4 is harness semantics plus s4
+    over-asking, not retrieval.
+  - On **6 of 36 progressive questions** s4 asked in plain text without a question mark,
+    and the course's detector (`conversation.looks_like_question` needs ？) ended the
+    question (`answered_without_clarification`). Our agent had this once (MS-0004).
+  - Where s4 did ask and look up, it hit the table gap: refunds, subscriptions,
+    invoices, accounts are not readable (e.g. a refund id queried as an event, an
+    invoice id as a payment id). One question looped on the course's dedup refusal
+    ("already executed") for 141 s.
+  - So quote s4 two ways: under the course's own protocol (0.183), and on progressive
+    questions only (0.194 vs ours 0.588). The clean headline comparison is s2, the
+    course's best stage (+0.19).
+- **Caveats for the headline (dev only):** ours was tuned on these 60 questions (prompt,
+  tool shape) and the course was not, so dev favours us; our agent's own run-to-run
+  variance is unmeasured (one trial); the judge agrees with Yi only fairly (required-item
+  kappa 0.36); and our data tools were built to the benchmark's declared tool and
+  operation set (535/535 selectors reproduced), which the course's were not. The test
+  split (240, run once, systems fixed in advance) is the number to quote.
 - Interview line: "on 60 held-out dev questions, same model and same simulated user, my
   agent passes 74% of tasks under a calibrated judge; the course's best stage 55%, its
   full agent 18%. The difference is the questions that need the account's own records."

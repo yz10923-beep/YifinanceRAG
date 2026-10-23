@@ -444,16 +444,19 @@ Not comparable: tools, operations, negative_found, as_of. `make verify` 180 pass
 **S4e results (VM, 2026-10-23):** judge_task on dev: ours (per-type) 0.741 vs course s1
 0.300, s2 0.550, s3 0.350, s4 0.183; vs s2 +0.190 [+0.05, +0.33], p 0.013 (all CIs
 exclude 0). Adapter checks hold (s1 doc evidence 0.306 = S1's course-index recall 0.293).
-Open: s4's single-turn collapse (0.167) to be checked in its export before quoting.
+s4 read in its export: 17/24 single-turn answers are only a request for ids (the course's
+protocol grades that as the answer), 6/36 progressive asks missed by its ？ detector;
+quote s4 on progressive only (0.194 vs 0.588) and s2 as the headline bar. Caveats: dev
+favours us (tuned there), our trial variance unmeasured.
 
-## Next session: start here (S4e: check course-s4 single-turn; then S5)
+## Next session: start here (S5: test once)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3 closed" and "S4" (plan
    S4a-S4e). The graders are closed: don't change them to make S4 look better.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo); S4a
    needs `data/generated/canonical/` and `evidence_resolution.jsonl`.
-3. S4a-S4e run (S5 config: per-type tools). Open: read course-s4's single-turn answers in
-   `evals/results/course/dev/s4.jsonl` (Yi uploads it) to explain its 0.167. Then S5:
-   test once, systems fixed in advance (ROADMAP "S4e results").
+3. S4 done (S5 config: per-type tools; course s4 diagnosed, ROADMAP "S4e results").
+   Optional before S5: a second agent trial on dev (`--answer-trial 1`) for run-to-run
+   variance. Then S5: test once, systems fixed in advance.
 4. No `main` branch exists on GitHub yet (2026-10-20); ask Yi before creating it.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,
