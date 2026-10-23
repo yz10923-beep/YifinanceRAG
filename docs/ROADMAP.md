@@ -1053,6 +1053,10 @@ ask_user on, hybrid-4b + Haiku rerank, max 16 steps.
   only payments, events, webhook deliveries / endpoints and the runtime logs: no
   accounts, refunds, customers, subscriptions, invoices, API keys or feature flags (106 of
   the 365 sql gold records on all 300 questions, e.g. 49 `sql:account`).
+- **VM setup for the course (host-direct):** its `make setup` needs uv, Docker, Ollama and
+  **Node >= 22.12** (it checks for node/npm and installs the frontend's packages even
+  though we only use the backend); without Node it stops before creating
+  `backend/.venv`. The course's database runs on 127.0.0.1:55432, beside ours on 5432.
 - Tests: the importer on the synthetic dataset end to end (export -> records -> grade),
   and the runner's `export()` on events in the course's format fed to the importer.
   `make verify` 180 passed, `make data-test` 8 passed.
