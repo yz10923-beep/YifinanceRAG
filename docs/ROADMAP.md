@@ -1069,6 +1069,42 @@ ask_user on, hybrid-4b + Haiku rerank, max 16 steps.
   and the runner's `export()` on events in the course's format fed to the importer.
   `make verify` 180 passed, `make data-test` 8 passed.
 
+### S4e results (2026-10-23, VM run by Yi): ours vs the course's stages on dev
+
+Tables: `evals/records/grade/s4e_course_stages_dev.md`. Same chat model and settings,
+same questions, same simulated user, same graders.
+
+| dev, 60 | judge_task | single | progressive | instance facts | record ev. | doc ev. |
+|---|---:|---:|---:|---:|---:|---:|
+| course-s1 | 0.300 | 0.708 | 0.028 | 0.200 | 0.000 | 0.306 |
+| course-s2 | 0.550 | 0.875 | 0.333 | 0.274 | 0.000 | 0.603 |
+| course-s3 | 0.350 | 0.667 | 0.139 | 0.265 | 0.019 | 0.417 |
+| course-s4 | 0.183 | 0.167 | 0.194 | 0.630 | 0.322 | 0.333 |
+| **ours (per-type agent)** | **0.741** | **0.958** | **0.588** | **0.921** | **0.958** | **0.744** |
+
+- **Paired judge_task, ours minus each stage:** s1 +0.431 [+0.31, +0.57] (25/0/33);
+  **s2 (the best course stage) +0.190 [+0.05, +0.33], 14/3/41, p 0.013**; s3 +0.397
+  (24/1/33); s4 +0.586 [+0.47, +0.71] (34/0/24). Every CI excludes 0.
+- Against s2 the win is on progressive questions (+0.265, p 0.035); single-turn is
+  +0.083 (CI touches 0): on questions answerable from documents alone, the course's
+  agentic search is about as good. s2 has no data tools, so it can't reach the account's
+  records at all (record evidence 0).
+- **Sanity checks of the adapter:** course-s1's doc evidence (0.306) matches the course
+  index's recall@10 measured in S1 (0.293); s3, which has data tools but no way to ask,
+  finds almost no records (0.019), just like our `--no-ask` (0.014).
+- **Coverage vs behaviour:** the course's tables cap record evidence at 0.787 on dev
+  (22 of 36 cases fully readable); s4 reaches 0.322. Most of its gap is behaviour.
+- **course-s4 single-turn 0.167 (s2: 0.875) needs a look before it is quoted.** Likely the
+  course's s4 asks a clarifying question even on single-turn questions, and the course's
+  own protocol (`play()`: one submission when the budget is 0) then scores the question
+  as the answer; its single-turn doc evidence (0.229) says it often answered before
+  searching. To check in the s4 export; until then, compare with s4 on progressive
+  questions only (0.194 vs ours 0.588).
+- Interview line: "on 60 held-out dev questions, same model and same simulated user, my
+  agent passes 74% of tasks under a calibrated judge; the course's best stage 55%, its
+  full agent 18%. The difference is the questions that need the account's own records."
+  (Dev only; the test numbers come from S5.)
+
 ## S5 test once + deploy
 
 Final numbers on the 240 test questions, run once; a small deployed demo; README with the
