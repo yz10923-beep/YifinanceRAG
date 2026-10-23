@@ -19,9 +19,26 @@ Agent vs the one-call bar (Haiku judge; instance facts after the thousands-separ
 | record_evidence | 0.000 | 0.972 |
 | course_task | 0.383 | 0.600 |
 
-Paired tables below: the deterministic graders, recomputed in the container from the two
-runs' records (`yfr compare ONECALL AGENT`). The paired judge_task table needs the judged
-runs on the VM.
+Paired judge_task (VM, Yi, 2026-10-23: `yfr compare
+evals/results/grade/20261020T095244Z_onecall-hybrid-4b+rerank_dev
+evals/results/grade/20261023T005613Z_agent-single_dev`; 58 cases, the 2 the judge left
+incomplete in either run drop out):
+
+judge_task: B = agent-single vs A = onecall-hybrid-4b+rerank (B wins / losses / ties per case)
+| type | n | A | B | B-A | 95% CI | W/L/T | sign p |
+|---|---:|---:|---:|---:|---|---|---:|
+| simple_retrieval | 14 | 0.857 | 0.929 | +0.071 | [-0.143, +0.286] | 2/1/11 | 1.000 |
+| multi_document | 10 | 0.500 | 0.700 | +0.200 | [-0.200, +0.600] | 3/1/6 | 0.625 |
+| multi_hop | 11 | 0.182 | 0.818 | +0.636 | [+0.364, +0.909] | 7/0/4 | 0.016 |
+| temporal_versioned | 5 | 0.200 | 0.400 | +0.200 | [-0.400, +0.800] | 2/1/2 | 1.000 |
+| multi_source | 14 | 0.286 | 0.357 | +0.071 | [-0.143, +0.286] | 2/1/11 | 1.000 |
+| tool_use_diagnostic | 4 | 0.000 | 0.750 | +0.750 | [+0.250, +1.000] | 3/0/1 | 0.250 |
+| mode=progressive | 34 | 0.206 | 0.559 | +0.353 | [+0.147, +0.529] | 14/2/18 | 0.004 |
+| mode=single | 24 | 0.708 | 0.833 | +0.125 | [-0.083, +0.333] | 5/2/17 | 0.453 |
+| all | 58 | 0.414 | 0.672 | +0.259 | [+0.103, +0.397] | 19/4/35 | 0.003 |
+
+The deterministic tables below were recomputed in the container from the two runs'
+records; the VM's output is identical.
 
 instance_facts: B = agent-single vs A = onecall (B wins / losses / ties per case)
 | type | n | A | B | B-A | 95% CI | W/L/T | sign p |

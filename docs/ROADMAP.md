@@ -959,8 +959,40 @@ Summary and tables: `evals/records/grade/s4c_agent_dev.md`.
   wrote its questions into the answer. Two questions lose instance-fact atoms on
   assertions listing 20 request ids each (a benchmark artifact: the answer would have to
   list them all).
-- Open: the paired judge_task table (needs the judged runs on the VM) and DeepSeek's
-  price (cost is None until Yi reads it).
+- **Paired judge_task (VM, 2026-10-23), 58 cases:** 0.414 -> 0.672, +0.259, CI
+  [+0.10, +0.40], 19/4/35, sign p 0.003. Progressive +0.353 (14/2/18, p 0.004); single
+  +0.125, CI spans 0. By type only multi_hop is clear (+0.636, 7/0/4); **multi_source
+  stays low (0.286 -> 0.357)** although its records and instance facts are nearly all
+  found (0.93 / 0.89): it fails on the rules (doc evidence 0.61, the lowest type) and on
+  combining them with the records. This is the S4c result; S4d starts from it.
+- Open: DeepSeek's price (cost is None until Yi reads it).
+- Interview line: "the loop beats one retrieval + one call by +0.26 judged task pass on
+  dev (p 0.003), and almost all of it is asking and looking up; document retrieval inside
+  the loop is no better than the fixed pipeline."
+
+### S4d plan, revised after S4c (2026-10-23)
+
+- **`disputed()` dropped, measured first.** Replaying the S4c data calls in the container
+  and applying the course's record-id regex to every answer: it would fire on 1 of 60,
+  and that one is a false positive (an invoice id the agent tried itself, got 0 rows for
+  and reported as unconfirmed). The agent doesn't invent record ids, so the check has
+  nothing to fix here.
+- **Search depth is not the doc-evidence problem:** 2-3 searches a question on every type
+  (multi_source 2.4); one-search questions are not the misses.
+- **Prompt fixed so a variant is one condition:** the system prompt was fixed text that
+  named `search_documents` and `ask_user` even when a variant removed them. Two lines are
+  now rendered from the tool set (`system_prompt()`); the default prompt is byte-identical
+  (sha256 b886ef0b... pinned in a test), so S4c stays the baseline with its cached replies.
+- **Not a variant:** the refused `ask_user` attempts on single-turn questions cost one
+  step each and no score (single-turn judge_task 0.833); the agent can't know the mode,
+  so refusing is the honest behaviour.
+- **The two A/Bs, both against the S4c run, dev, trial 0, Haiku judge:**
+  1. `--no-ask`: how much of the +0.26 comes from asking (S2's upper bound: +0.147 recall
+     from user facts). Expected: progressive drops toward one-call.
+  2. `--tool-shape per-type`: the benchmark's own tool set (five folder-filtered search
+     tools, each reranked). Aimed at the weak spot: multi_source doc evidence 0.61.
+     Costs more rerank calls (one per folder searched).
+
 
 ## S5 test once + deploy
 

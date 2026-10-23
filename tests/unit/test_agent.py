@@ -16,17 +16,19 @@ from yifinance_rag.answer.agent import (
     LAST_STEP,
     NO_MORE_QUESTIONS,
     NUDGE,
+    SEARCH_TOOLS,
     SUBMIT,
     Agent,
     AgentConfig,
     FolderFilter,
     ResponseCache,
     SearchTool,
+    system_prompt,
 )
 from yifinance_rag.answer.user import SimulatedUser
 from yifinance_rag.data.benchmark import Question
 from yifinance_rag.data.corpus import EvidenceMap, benchmark_chunks, load_docs
-from yifinance_rag.data.dataset import Dataset
+from yifinance_rag.data.dataset import Dataset, sha256_text
 from yifinance_rag.grade.graders import Context
 from yifinance_rag.llm.retry import RetryPolicy
 from yifinance_rag.llm.types import (
@@ -297,3 +299,16 @@ def test_cli_runs_the_agent_and_writes_records_and_traces(
     assert len((run2 / "records.jsonl").read_text().splitlines()) == 2
     config = json.loads((run2 / "summary.json").read_text())["config"]
     assert len(config["search_tools"]) == 5 and config["ask_user"] is False
+
+
+def test_each_variant_prompt_names_only_its_own_tools() -> None:
+    now = "2026-08-27T12:00:00.000Z"
+    base = system_prompt(now, ask_user=True, single_search=True)
+    # the S4c baseline run's system_sha256: the default prompt must not drift
+    assert sha256_text(base) == "b886ef0b199d6f6669b58e883eabfba9dcb302fb40b33db96df1f37c61f2c2b3"
+    no_ask = system_prompt(now, ask_user=False, single_search=True)
+    assert "ask_user" not in no_ask and "search_documents" in no_ask
+    per_type = system_prompt(now, ask_user=True, single_search=False)
+    assert "search_documents" not in per_type and "ask_user" in per_type
+    for tool in SEARCH_TOOLS:
+        assert (tool in per_type) == (tool != "search_documents")

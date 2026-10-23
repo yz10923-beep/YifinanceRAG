@@ -44,9 +44,8 @@ SYSTEM = """\
 
 工作方式：
 - 先判断问题属于哪个产品领域。用户的第一句话往往信息不全：需要账户编号、环境（正式/沙箱）、
-  发生时间、对象编号（支付、退款、请求、投递等）或接口版本时，用 ask_user 有针对性地询问，
-  每次只问当前确实缺少的信息。
-- 用 search_documents 查规则、API 文档和排障手册；用数据工具查这个账户实际发生了什么。
+  发生时间、对象编号（支付、退款、请求、投递等）或接口版本时，{ask}
+- {search}；用数据工具查这个账户实际发生了什么。
   数据工具必须带 account_id 和 environment；问题涉及过去某个时间时，传 as_of（ISO 时间，
   例如用户说"8 月 2 日中午前后"就用 2026-08-02T12:00:00Z），不要用当前状态代替历史状态。
 - 只根据工具返回的证据下结论。证据不足以确定时，说明还缺什么，不要猜测。历史支持案例只是
@@ -54,6 +53,24 @@ SYSTEM = """\
 - 结论先行：先写结论，再写查到的实际记录（编号、状态、金额、错误码、时间）和依据的规则，
   最后写处理建议。用中文回答。
 - 用 submit_answer 提交最终回答，并在 citations 里列出支持结论的资料和记录的编号（如 D2、R5）。"""
+
+# The two lines that depend on the tool set, so a variant's prompt names only its own tools.
+ASK_LINE = "用 ask_user 有针对性地询问，\n  每次只问当前确实缺少的信息。"
+NO_ASK_LINE = "无法向用户追问：用已有信息查证，\n  并在回答中说明还缺哪些信息。"
+SINGLE_SEARCH_LINE = "用 search_documents 查规则、API 文档和排障手册"
+PER_TYPE_SEARCH_LINE = (
+    "用 search_business_rules、search_api_docs、search_troubleshooting、\n"
+    "  search_release_notes、search_support_cases 分别查对应类型的文档"
+)
+
+
+def system_prompt(now: str, *, ask_user: bool, single_search: bool) -> str:
+    return SYSTEM.format(
+        now=now,
+        ask=ASK_LINE if ask_user else NO_ASK_LINE,
+        search=SINGLE_SEARCH_LINE if single_search else PER_TYPE_SEARCH_LINE,
+    )
+
 
 SUBMIT = "submit_answer"
 ASK = "ask_user"
@@ -211,7 +228,11 @@ class Agent:
         self.search = {s.name: s for s in search}
         self.emap, self.data, self.cache = emap, data, cache
         self.config = config or AgentConfig()
-        self.system = SYSTEM.format(now=now)
+        self.system = system_prompt(
+            now,
+            ask_user=self.config.ask_user,
+            single_search=list(self.search) == ["search_documents"],
+        )
         self.retry = retry or RetryPolicy()
         self.tracer_factory = tracer_factory or (lambda _: Tracer.noop())
         self._loop = asyncio.new_event_loop()
