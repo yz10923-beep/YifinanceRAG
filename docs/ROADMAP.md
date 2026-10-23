@@ -1058,11 +1058,13 @@ ask_user on, hybrid-4b + Haiku rerank, max 16 steps.
   though we only use the backend); without Node it stops before creating
   `backend/.venv`. The course's database runs on 127.0.0.1:55432, beside ours on 5432.
   Its `setup` target also misses the Makefile's `with-env` block (course at `fdeda6b`), so
-  the alembic step fails on `KeyError: FLOWPAY_KNOWLEDGE_ADMIN_DSN`: export the three
-  `FLOWPAY_KNOWLEDGE_*_DSN` (`postgresql://<role>:flowpay_local@127.0.0.1:55432/
-  flowpay_knowledge`, roles `flowpay_admin`, `flowpay_knowledge_reader`,
-  `flowpay_knowledge_builder`) and `FLOWPAY_DATASET_PATH` first. `course_stages.py` sets
-  the same defaults itself.
+  the alembic step fails on `KeyError: FLOWPAY_KNOWLEDGE_ADMIN_DSN` (and `make doctor`
+  on the same variable): add the three `FLOWPAY_KNOWLEDGE_*_DSN`
+  (`postgresql://<role>:flowpay_local@127.0.0.1:55432/flowpay_knowledge`, roles
+  `flowpay_admin`, `flowpay_knowledge_reader`, `flowpay_knowledge_builder`),
+  `FLOWPAY_DB_PASSWORD` and `FLOWPAY_DATASET_PATH` to the course's `.env` (setup and
+  doctor read it). `course_stages.py` sets the same defaults itself. Don't use the
+  course's `make up` (all-in-Docker, incl. a 4.5 GB Ollama container) on the VM.
 - Tests: the importer on the synthetic dataset end to end (export -> records -> grade),
   and the runner's `export()` on events in the course's format fed to the importer.
   `make verify` 180 passed, `make data-test` 8 passed.
