@@ -72,7 +72,7 @@ def test_onecall_writes_records_and_shows_no_ids(
     for p in chat.prompts:  # no chunk ids, question ids or answers in what the model sees
         assert "doc:" not in p and "G-" not in p and "#c0" not in p
     summary = json.loads((run / "summary.json").read_text())
-    assert summary["chat"]["calls"] == 4 and summary["chat"]["cost_usd"] is None  # no price
+    assert summary["chat"]["calls"] == 4 and isinstance(summary["chat"]["cost_usd"], float)
     assert "yfr grade --records" in capsys.readouterr().out
     again = FakeChat()
     monkeypatch.setattr(cli, "default_chat", lambda settings: lambda: again)

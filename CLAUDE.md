@@ -428,16 +428,19 @@ one question never asked. `yfr compare` now pairs grade runs. `make verify` 174 
 **S4d started (2026-10-23):** `disputed()` dropped (would fire on 1/60, a false positive);
 the prompt now names only each variant's tools (default byte-identical, hash pinned).
 A/Bs: `--no-ask` and `--tool-shape per-type`, each vs S4c. `make verify` 175 passed.
+**S4d results (VM, 2026-10-23):** no-ask judge_task 0.684 -> 0.456 (-0.228, CI
+[-0.35, -0.11], p 0.002; back to the one-call bar): asking is the loop's gain. Per-type
+tools +0.089, CI [-0.02, +0.20], p 0.227: not distinguishable (multi_source +0.286,
+multi_hop -0.273). DeepSeek price recorded from Yi's bill ($0.15 / $0.003 / $0.60 per M,
+off-peak; peak 2x); S4c chat cost $0.0018 a question. `make verify` 176 passed.
 
-## Next session: start here (S4d: grade and compare the two A/B runs)
+## Next session: start here (S4d decision: tool shape; then S4e)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3 closed" and "S4" (plan
    S4a-S4e). The graders are closed: don't change them to make S4 look better.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo); S4a
    needs `data/generated/canonical/` and `evidence_resolution.jsonl`.
-3. S4a-S4c done. S4d: Yi runs `--no-ask` and `--tool-shape per-type` on dev, grades
-   each with Haiku, and sends `yfr compare` against the S4c grade run
-   `evals/results/grade/20261023T005613Z_agent-single_dev`. DeepSeek's price still open.
-   Then S4e (course stages) and S5.
+3. S4a-S4d run. Open: Yi picks the S5 tool shape (single vs per-type; ROADMAP "S4d
+   results"). Then S4e (course stages on the same model) and S5 (test once).
 4. No `main` branch exists on GitHub yet (2026-10-20); ask Yi before creating it.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,

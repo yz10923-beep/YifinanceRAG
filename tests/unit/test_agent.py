@@ -281,7 +281,8 @@ def test_cli_runs_the_agent_and_writes_records_and_traces(
     assert len(records) == 4 and fake.calls == 4
     assert len(list((run / "traces").iterdir())) == 4
     summary = json.loads((run / "summary.json").read_text())
-    assert summary["stops"] == {"submitted": 4} and summary["usage"]["cost_usd"] is None
+    assert summary["stops"] == {"submitted": 4}
+    assert isinstance(summary["usage"]["cost_usd"], float)  # deepseek-v4-flash is priced
     assert "yfr grade --records" in capsys.readouterr().out
     per_type = tmp_path / "per-type"
     args = [

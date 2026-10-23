@@ -48,3 +48,16 @@ def test_haiku_5_5_prompts_over_100k_tokens_use_the_long_card() -> None:
     }
     expected = (1 * 0.50 + 50_000 * 0.625 + 50_000 * 0.05) / M + 2.50
     assert cost_usd("claude-haiku-5-5", long) == pytest.approx(expected)
+
+
+def test_deepseek_flash_reproduces_the_billed_hours() -> None:
+    # Yi's DeepSeek usage export, 2026-10-23: (cache miss, cache hit, output) per hour,
+    # and what each hour was billed. Our input_tokens are the misses only.
+    billed = [
+        ((83_517, 199_296, 24_016), 0.027535038),
+        ((564_863, 1_519_872, 209_222), 0.214822266),
+        ((6_571, 24_576, 4_497), 0.003757578),
+    ]
+    for (miss, hit, out), dollars in billed:
+        usage = {"input_tokens": miss, "cache_read_input_tokens": hit, "output_tokens": out}
+        assert cost_usd("deepseek-v4-flash", usage) == pytest.approx(dollars, abs=1e-9)

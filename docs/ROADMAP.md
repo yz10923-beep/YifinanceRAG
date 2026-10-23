@@ -994,6 +994,35 @@ Summary and tables: `evals/records/grade/s4c_agent_dev.md`.
      Costs more rerank calls (one per folder searched).
 
 
+### S4d results (2026-10-23, VM run by Yi)
+
+Tables: `evals/records/grade/s4d_ab_dev.md`. Both vs the S4c run, paired.
+
+| variant | judge_task (paired n) | B-A, 95% CI | W/L/T, p | other |
+|---|---:|---|---|---|
+| `--no-ask` | 0.684 -> 0.456 (57) | -0.228 [-0.35, -0.11] | 2/15/40, 0.002 | instance facts 0.93 -> 0.30, record evidence 0.97 -> 0.01; doc evidence **+0.115** [+0.04, +0.19] |
+| `--tool-shape per-type` | 0.661 -> 0.750 (56) | +0.089 [-0.02, +0.20] | 8/3/45, 0.227 | multi_source +0.286 (4/0/10, p 0.125), multi_hop -0.273 (0/3/8); doc / record evidence and instance facts unchanged |
+
+- **Asking is the loop's gain.** Without `ask_user` the agent can't scope a single data
+  lookup (every data tool needs account and environment), record evidence falls to 0.01,
+  and judge_task (0.456) is back at the one-call bar (0.414 on the same cases). With
+  nothing to ask, it spends its steps searching and finds more gold documents (+0.115,
+  p 0.008), which still doesn't save the answers. Single-turn also fell (-0.125, CI
+  spans 0): not a claim; the prompt's one changed line is the only difference there.
+- **Per-type tools: not distinguishable on dev.** The point estimate is higher on 4 of 6
+  types and on single-turn (0.958, 3/0/21), and multi_source (the S4c weak spot) moved
+  the predicted way, but the CI spans 0 and multi_hop moved the other way. Doc evidence
+  did not rise, so where it helps it is not by finding more gold chunks. Cost: 321K vs
+  240K uncached input tokens (+34%), output about equal.
+- **Price recorded** (`llm/pricing.py`): `deepseek-v4-flash` is billed as `deepseek-flash`
+  at $0.15 / $0.003 / $0.60 per M (miss / hit / output), the off-peak card; peak doubles
+  it. Peak hours are not recorded, so a cost is exact for off-peak runs and at most 2x
+  low otherwise. S4c's chat cost at this price: $0.109 a dev run, $0.0018 a question;
+  with rerank ($0.05) and judge ($0.02) about $0.003 a question.
+- Interview line: "an ablation, not an assumption: turning off clarifying questions takes
+  the agent from 0.68 to 0.46 judged pass, back to the single-call baseline; the agent's
+  value is knowing what to ask and then looking it up under tenant scope."
+
 ## S5 test once + deploy
 
 Final numbers on the 240 test questions, run once; a small deployed demo; README with the

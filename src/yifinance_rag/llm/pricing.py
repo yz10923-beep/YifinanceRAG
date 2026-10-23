@@ -34,6 +34,12 @@ PRICES: dict[str, Rates] = {
     "claude-sonnet-4-6": Rates(3.0, 3.75, 0.30, 15.0),
     "claude-haiku-5-5": Rates(0.10, 0.125, 0.01, 0.50),
     "claude-haiku-4-5": Rates(1.0, 1.25, 0.10, 5.0),
+    # DeepSeek, as billed (Yi's usage export, 2026-10-23): the API id deepseek-v4-flash is
+    # billed as "deepseek-flash" at 0.15 cache-miss input, 0.003 cache-hit input, 0.60
+    # output. That is the off-peak card; peak doubles every rate (DeepSeek's pricing page,
+    # quoted by Yi 2026-10-23), so a run in peak hours costs up to 2x this. DeepSeek has no
+    # cache-write charge: a miss is billed as input, hence cache_write = input.
+    "deepseek-v4-flash": Rates(0.15, 0.15, 0.003, 0.60),
 }
 
 # Haiku 5.5 has a second rate card for a prompt over 100K tokens, where the prompt counts

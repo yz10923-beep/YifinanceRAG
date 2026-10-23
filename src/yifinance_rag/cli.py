@@ -618,7 +618,7 @@ def cmd_answer(
     }
     (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
     cost = (
-        "unknown (no DeepSeek price recorded)"
+        "unknown (no price for the served model id)"
         if stats.cost_usd is None
         else f"${stats.cost_usd:.4f}"
     )
@@ -750,7 +750,7 @@ def _answer_agent(
     }
     (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
     cost = (
-        "unknown (no DeepSeek price recorded)"
+        "unknown (no price for the served model id)"
         if totals["cost_usd"] is None
         else f"${totals['cost_usd']:.4f}"
     )
