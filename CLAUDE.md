@@ -246,6 +246,9 @@ uv run yfr grade ... --judge haiku|sonnet [--judge-trial N]   # + LLM judge (pai
 uv run yfr answer --system onecall [retrieval flags]   # deepseek-v4-flash, paid, cached
 uv run yfr answer --system agent [--tool-shape single|per-type] [--no-ask] [--max-steps N] \
     [--limit N] [retrieval flags]   # the S4 agent; paid; replies cached, traces per case
+~/KamaAgenticRAG/backend/.venv/bin/python scripts/course_stages.py --course ~/KamaAgenticRAG \
+    [--stages s1,s2,s3,s4] [--limit N]   # course stages on our split, in the course's venv; paid
+uv run yfr import-course evals/results/course/dev/s1.jsonl   # -> answer records for yfr grade
 uv run yfr label-sheet RUN       # blind labels.md + labels.tsv for a run's dev answers
 uv run yfr agree LABELS.tsv RUN [RUN ...]   # judge vs Yi's labels: agreement, kappa
 ```
@@ -433,14 +436,20 @@ A/Bs: `--no-ask` and `--tool-shape per-type`, each vs S4c. `make verify` 175 pas
 tools +0.089, CI [-0.02, +0.20], p 0.227: not distinguishable (multi_source +0.286,
 multi_hop -0.273). DeepSeek price recorded from Yi's bill ($0.15 / $0.003 / $0.60 per M,
 off-peak; peak 2x); S4c chat cost $0.0018 a question. `make verify` 176 passed.
+**S4d decided:** per-type tools for S5 (Yi, 2026-10-23).
+**S4e built (2026-10-23, container):** `scripts/course_stages.py` runs the course's s1-s4
+in its own venv with its own `play()` on our split; `yfr import-course` maps the export to
+answer records (passages by span, records by the dataset's ids), graded like ours.
+Not comparable: tools, operations, negative_found, as_of. `make verify` 180 passed.
 
-## Next session: start here (S4d decision: tool shape; then S4e)
+## Next session: start here (S4e: Yi runs the course stages; then S5)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3 closed" and "S4" (plan
    S4a-S4e). The graders are closed: don't change them to make S4 look better.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo); S4a
    needs `data/generated/canonical/` and `evidence_resolution.jsonl`.
-3. S4a-S4d run. Open: Yi picks the S5 tool shape (single vs per-type; ROADMAP "S4d
-   results"). Then S4e (course stages on the same model) and S5 (test once).
+3. S4a-S4d done (S5 config: per-type tools). S4e: Yi sets up the course checkout on the
+   VM and runs `scripts/course_stages.py` on dev, then imports, grades (Haiku) and
+   compares each stage with the per-type agent run. Then S5 (test once).
 4. No `main` branch exists on GitHub yet (2026-10-20); ask Yi before creating it.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,

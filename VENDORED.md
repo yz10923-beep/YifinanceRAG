@@ -41,3 +41,12 @@ MIT, Copyright (c) 2026 程序员Carl; repo at `fdeda6b`, read 2026-10-17) on th
 records, so results compare with the course's. The rules and the id pattern are kept
 as they are; the one change is that doc evidence is read from our records' gold chunk ids
 instead of the course's heading alignment.
+
+## Run against the course (imported at run time, not copied)
+
+`scripts/course_stages.py` imports KamaAgenticRAG's own code at run time, inside the
+course's checkout and venv (repo at `fdeda6b`, MIT, Copyright (c) 2026 程序员Carl): its
+`SessionManager`, workflows s1-s4 and `scripts/benchmark/run.py`'s `play()` and `score()`.
+No course code is copied into this repo or modified; the script adds only question
+selection by our split and an export of the events our importer
+(`src/yifinance_rag/answer/course.py`) reads.

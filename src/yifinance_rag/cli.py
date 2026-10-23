@@ -38,6 +38,7 @@ import psycopg
 
 from yifinance_rag.answer import agent as agent_mod
 from yifinance_rag.answer import onecall
+from yifinance_rag.answer.course import NOT_COMPARABLE, CourseRunError, read_export, to_record
 from yifinance_rag.answer.user import SimulatedUser
 from yifinance_rag.config import REPO_ROOT, ConfigError, Settings, cache_dir, load_settings
 from yifinance_rag.data.benchmark import (
@@ -864,6 +865,64 @@ def _compare_grades(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_import_course(ds: Dataset, args: argparse.Namespace) -> int:
+    """A course-stage export (scripts/course_stages.py) -> answer records for `yfr grade`."""
+    source = Path(args.export)
+    rows = read_export(source.read_text(encoding="utf-8"))
+    if not rows:
+        print(f"error: {source} has no questions")
+        return 1
+    _, labels = load_benchmark(ds)
+    case_ids = {lab.question_id: cid for cid, lab in labels.items()}
+    stages = {str(r.get("stage")) for r in rows}
+    splits = {labels[case_ids[q]].split for r in rows if (q := r["question_id"]) in case_ids}
+    if len(stages) != 1 or len(splits) != 1:
+        print(f"error: one stage and one split per export, got {stages} / {splits}")
+        return 1
+    (stage,), (split,) = stages, splits
+    name = args.name or f"course-{stage}"
+    emap = EvidenceMap(benchmark_chunks(load_docs(ds)))
+    try:
+        records = [to_record(r, emap, case_ids, name) for r in rows]
+    except CourseRunError as e:
+        print(f"error: {e}")
+        return 1
+    if len({r.case_id for r in records}) != len(records):
+        print("error: a question appears twice in the export")
+        return 1
+    errors = source.with_name(f"{stage}.errors.jsonl")
+    out = _run_dir(Path(args.out), f"{name}_{split}")
+    write_records(out / "records.jsonl", records)
+    total: dict[str, float | None] = {}
+    for key in ("llm_calls", "input_tokens", "output_tokens", "cache_read_tokens", "cost_usd"):
+        values = [r.usage.get(key) for r in records]
+        total[key] = None if any(v is None for v in values) else sum(float(v or 0) for v in values)
+    summary = {
+        "system": name,
+        "config": {"source": "course", "stage": stage, "model": rows[0].get("model")},
+        "split": split,
+        "cases": len(records),
+        "usage": total,
+        "infra_errors": len(errors.read_text().splitlines()) if errors.exists() else 0,
+        "not_comparable": list(NOT_COMPARABLE),
+        "export_sha256": sha256_file(source),
+        "release_manifest_sha256": sha256_file(ds.path(RELEASE_MANIFEST)),
+        "split_sha256": split_hash(labels.values()),
+        "git_commit": _git_commit(),
+        "created": out.name.split("_", 1)[0],
+    }
+    (out / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+    cost = "unknown" if total["cost_usd"] is None else f"${total['cost_usd']:.4f}"
+    print(
+        f"{name} on {split}: {len(records)} answers from {source.name}, "
+        f"{int(total['llm_calls'] or 0)} model calls, {cost}"
+    )
+    if len(records) < sum(lab.split == split for lab in labels.values()):
+        print(f"note: the {split} split has more questions than this export (a partial run)")
+    print(f"written to {out}\nnext: uv run yfr grade --records {out}/records.jsonl --name {name}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="yfr")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -908,6 +967,10 @@ def build_parser() -> argparse.ArgumentParser:
     agr = sub.add_parser("agree", help="judge vs Yi's labels: agreement and Cohen's kappa")
     agr.add_argument("labels", help="a filled labels.tsv")
     agr.add_argument("runs", nargs="+", help="judged grade runs of the same records")
+    imp = sub.add_parser("import-course", help="a course-stage export -> answer records")
+    imp.add_argument("export", help="<out>/<split>/<stage>.jsonl from scripts/course_stages.py")
+    imp.add_argument("--name", help="system name (default course-<stage>)")
+    imp.add_argument("--out", default=str(REPO_ROOT / "evals" / "results" / "answers"))
     cmp = sub.add_parser("compare", help="paired comparison of two runs (B against A)")
     cmp.add_argument("run_a", type=Path)
     cmp.add_argument("run_b", type=Path)
@@ -960,6 +1023,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_grade(ds, settings, args)
         if args.command == "answer":
             return cmd_answer(ds, settings, args)
+        if args.command == "import-course":
+            return cmd_import_course(ds, args)
         if args.command == "label-sheet":
             return cmd_label_sheet(ds, args)
         return cmd_retrieval(ds, settings, args)

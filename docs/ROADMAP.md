@@ -1023,6 +1023,40 @@ Tables: `evals/records/grade/s4d_ab_dev.md`. Both vs the S4c run, paired.
   the agent from 0.68 to 0.46 judged pass, back to the single-call baseline; the agent's
   value is knowing what to ask and then looking it up under tenant scope."
 
+### S4d decided (Yi, 2026-10-23): per-type search tools for S5
+
+Not distinguishable on dev (+0.089, CI [-0.02, +0.20]); chosen on the point estimate and
+because it is the benchmark's own tool set. The S5 config: `--tool-shape per-type`,
+ask_user on, hybrid-4b + Haiku rerank, max 16 steps.
+
+### S4e built (2026-10-23, container): the course's stages under our graders
+
+- **Runner** `scripts/course_stages.py`, run in the course's checkout and venv on the VM.
+  It drives each question with the course's own `play()` (the dataset's simulated user,
+  the course's clarification detection) through its `SessionManager` and workflow s1-s4,
+  with the course's config (`deepseek-v4-flash`, thinking off, 4096 tokens: identical to
+  ours). Questions from our split (test only with `--final`). One line per question with
+  the answer, the disclosures by category, retrieved passages with character spans, every
+  data access (`source.request` / `source.response`: all of the course's tools read
+  through it), model usage and the course's own score row. A failed run (`run.failed`,
+  `model.error`, empty answer) goes to `<stage>.errors.jsonl` and stops the stage;
+  re-running resumes.
+- **Importer** `yfr import-course EXPORT` -> answer records, then `yfr grade` as usual.
+  Passages map to gold chunks by span (`EvidenceMap`, as `course-dense`); the course's log
+  rows carry the dataset's `evidence_id`, and its four SQL relations are keyed like ours
+  (checked on the real data: 192/192 gold ids in those tables found by primary key).
+- **Comparable:** judge_task / judge_assertions, instance facts, course_task, doc and
+  record evidence, clarification. **Not comparable** (recorded in each summary):
+  `tools`, `operations`, `negative_found` (they match our tool and operation names) and
+  `as_of` (the course has no as-of parameter).
+- **A capability gap to report, not a grading artifact:** the course's data tools read
+  only payments, events, webhook deliveries / endpoints and the runtime logs: no
+  accounts, refunds, customers, subscriptions, invoices, API keys or feature flags (106 of
+  the 365 sql gold records on all 300 questions, e.g. 49 `sql:account`).
+- Tests: the importer on the synthetic dataset end to end (export -> records -> grade),
+  and the runner's `export()` on events in the course's format fed to the importer.
+  `make verify` 180 passed, `make data-test` 8 passed.
+
 ## S5 test once + deploy
 
 Final numbers on the 240 test questions, run once; a small deployed demo; README with the
