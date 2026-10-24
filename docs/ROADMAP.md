@@ -1163,3 +1163,42 @@ with the dev configs exactly as recorded; every result is reported, good or bad:
 
 Final numbers on the 240 test questions, run once; a small deployed demo; README with the
 results table and cost per question.
+
+### S5 results: the test split, run once (2026-10-24, VM)
+
+Record: `evals/records/grade/s5_test.md`. The plan above, unchanged; one course-s2 infra
+failure (a dropped DeepSeek stream) rerun, not scored.
+
+| test, 240 | judge_task | single | progressive | instance facts | record ev. | doc ev. |
+|---|---:|---:|---:|---:|---:|---:|
+| course-s1 | 0.458 | 0.760 | 0.257 | 0.215 | 0.000 | 0.375 |
+| course-s2 | 0.567 | 0.885 | 0.354 | 0.252 | 0.000 | 0.620 |
+| course-s3 | 0.382 | 0.777 | 0.125 | 0.253 | 0.054 | 0.470 |
+| course-s4 | 0.315 | 0.302 | 0.324 | 0.682 | 0.336 | 0.420 |
+| one-call | 0.544 | 0.823 | 0.357 | 0.201 | 0.000 | 0.638 |
+| **ours** | **0.662** | **0.874** | **0.521** | **0.919** | **0.974** | **0.649** |
+
+- **Headline: ours beats every course stage and the one-call baseline on held-out
+  questions.** vs course-s2 (the course's best): **+0.097, CI [+0.03, +0.17], 47/24/166,
+  p 0.009**; vs one-call +0.114 [+0.05, +0.18]; vs s1 +0.20, s3 +0.27, s4 +0.35. All CIs
+  exclude 0.
+- **The dev gap shrank as predicted** (vs s2: +0.19 on dev, +0.10 on test): dev favoured
+  us because we tuned there. Test is the number to quote.
+- **Where it comes from: questions that need the account's records.** Progressive:
+  0.521 vs s2 0.354 (+0.169, p 0.001); record evidence 0.974 vs 0 (s2 has no data tools)
+  and vs 0.336 (s4); instance facts 0.919 vs <= 0.68. **Single-turn (documents only): no
+  difference** (0.874 vs s2 0.885, -0.011; vs one-call +0.04, n.s.).
+- **Retrieval inside the loop is level with the course's agentic search:** doc evidence
+  0.649 vs s2 0.620 (+0.029, CI spans 0) and vs our own one-call 0.638. The S2 retrieval
+  gain (recall@10 0.714 vs the course index's 0.293, one fixed search) is real for a single
+  search, but s2's repeated searches close most of it; our agent's edge is not retrieval.
+  This is an honest negative for the "retrieval engineering" claim at the agent level.
+- **Weak spots to name:** multi_source 0.491 and tool_use_diagnostic 0.421 (course-s4 is
+  0.474 there, the one type where a course stage is ahead, n.s.), multi_hop 0.542. These
+  are the questions that combine records with several rules.
+- Interview line: "On 240 held-out questions, same model, same simulated user, graded by
+  a judge calibrated on my labels: 66% task pass vs 57% for the course's best stage
+  (+10 points, 95% CI +3 to +17). The whole gain is on questions that need the account's
+  own records, 52% vs 35%; on document-only questions we're level. My retrieval upgrade
+  wins a single search by 0.4 recall but not an agent that can search again."
+- Open: cost per question (answer-run summaries), the README table, the deployed demo.

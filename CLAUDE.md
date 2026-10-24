@@ -453,14 +453,18 @@ favours us (tuned there).
 DeepSeek's served model id is `deepseek-flash`: added to pricing (costs were None).
 **S5 plan fixed** (ROADMAP "S5 plan"): ours (per-type), one-call, course s1-s4, once each on
 test; headline ours vs course s2.
+**S5 test results (VM, 2026-10-24, run once):** judge_task ours 0.662 vs course s1 0.458,
+s2 0.567, s3 0.382, s4 0.315, one-call 0.544; vs s2 +0.097 [+0.03, +0.17], p 0.009. Gain is
+all progressive (0.521 vs 0.354); single-turn level; doc evidence level with s2 (0.649 vs
+0.620). Dev gap (+0.19) shrank on test as expected (ROADMAP "S5 results").
 
-## Next session: start here (S5: test once)
+## Next session: start here (S5: cost, README, demo)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3 closed" and "S4" (plan
    S4a-S4e). The graders are closed: don't change them to make S4 look better.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo); S4a
    needs `data/generated/canonical/` and `evidence_resolution.jsonl`.
-3. S4 done. S5: Yi runs the fixed plan on test (ROADMAP "S5 plan"); then the README
-   results table, cost per question, and a small deployed demo.
+3. S5 test run done (ROADMAP "S5 results"). Open: cost per question from the answer-run
+   summaries, the README results table (done, cost pending), a small deployed demo.
 4. No `main` branch exists on GitHub yet (2026-10-20); ask Yi before creating it.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,
