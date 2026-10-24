@@ -1207,5 +1207,15 @@ failure (a dropped DeepSeek stream) rerun, not scored.
   s4 $0.0013 (its embeddings run locally). Ours costs about 2.2x the course's best stage;
   the reranker is 39% of our cost.
 - README rewritten for outside readers (results, ablations, method, limitations).
+
+### S5b plan: the S2 retrieval ladder on test, fixed before running (2026-10-24)
+
+The retrieval configs closed in S2, unchanged, each run once on the 240 test questions
+(`yfr retrieval --split test --final`, Yi only); every row reported:
+oracle and random (sanity), course-dense (the course's index), BM25, dense-809, hybrid,
+dense-809-4b, hybrid-4b, hybrid-4b + Haiku rerank (top 20 -> 10, rerank trial 0).
+Metrics as in S2: recall@10, MRR@10, recall@20, per type and mode. Paired comparisons,
+each step against the one before: course-dense -> BM25 -> hybrid -> hybrid-4b -> + rerank,
+and course-dense -> hybrid-4b + rerank end to end.
 - Open: the deployed demo (optional; see the session note on its purpose), merging to
   `main` (Yi decides).
