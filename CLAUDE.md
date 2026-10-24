@@ -457,14 +457,17 @@ test; headline ours vs course s2.
 s2 0.567, s3 0.382, s4 0.315, one-call 0.544; vs s2 +0.097 [+0.03, +0.17], p 0.009. Gain is
 all progressive (0.521 vs 0.354); single-turn level; doc evidence level with s2 (0.649 vs
 0.620). Dev gap (+0.19) shrank on test as expected (ROADMAP "S5 results").
+Cost per test question: ours $0.0037 (rerank 39%), course s2 $0.0017, one-call $0.0009.
+README rewritten for outside readers (2026-10-24).
 
-## Next session: start here (S5: cost, README, demo)
+## Next session: start here (S5 closed except the optional demo)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3 closed" and "S4" (plan
    S4a-S4e). The graders are closed: don't change them to make S4 look better.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo); S4a
    needs `data/generated/canonical/` and `evidence_resolution.jsonl`.
-3. S5 test run done (ROADMAP "S5 results"). Open: cost per question from the answer-run
-   summaries, the README results table (done, cost pending), a small deployed demo.
+3. S5 test run, cost and README done (ROADMAP "S5 results"). Open, Yi decides: a demo
+   (private; the dataset can't be published), merging to `main`. The test split is
+   spent: any further agent change needs a new held-out set before it can be claimed.
 4. No `main` branch exists on GitHub yet (2026-10-20); ask Yi before creating it.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,

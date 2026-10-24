@@ -1201,4 +1201,11 @@ failure (a dropped DeepSeek stream) rerun, not scored.
   (+10 points, 95% CI +3 to +17). The whole gain is on questions that need the account's
   own records, 52% vs 35%; on document-only questions we're level. My retrieval upgrade
   wins a single search by 0.4 recall but not an agent that can search again."
-- Open: cost per question (answer-run summaries), the README table, the deployed demo.
+- **Cost per question on test** (DeepSeek off-peak; grading excluded): ours $0.0037
+  ($0.548 chat over 1,075 calls + $0.344 Haiku rerank over 847 calls, 9% of reranks fell
+  back to first-stage order); one-call $0.0009; course s1 $0.0007, s2 $0.0017, s3 $0.0010,
+  s4 $0.0013 (its embeddings run locally). Ours costs about 2.2x the course's best stage;
+  the reranker is 39% of our cost.
+- README rewritten for outside readers (results, ablations, method, limitations).
+- Open: the deployed demo (optional; see the session note on its purpose), merging to
+  `main` (Yi decides).
