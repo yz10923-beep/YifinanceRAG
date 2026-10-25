@@ -459,6 +459,9 @@ all progressive (0.521 vs 0.354); single-turn level; doc evidence level with s2 
 0.620). Dev gap (+0.19) shrank on test as expected (ROADMAP "S5 results").
 Cost per test question: ours $0.0037 (rerank 39%), course s2 $0.0017, one-call $0.0009.
 README rewritten for outside readers (2026-10-24).
+**S5b retrieval ladder on test (VM, 2026-10-25):** recall@10 course-dense 0.361, BM25 0.406,
+hybrid 0.549, hybrid-4b 0.586, + rerank 0.638 (end to end +0.277, CI [+0.23, +0.32]);
+hybrid is the big step; rerank helps only progressive questions (ROADMAP "S5b results").
 
 ## Next session: start here (S5 closed except the optional demo)
 1. `git pull` on `claude/yifinancerag`; read docs/ROADMAP.md "S3 closed" and "S4" (plan

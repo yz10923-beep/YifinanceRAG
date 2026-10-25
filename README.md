@@ -37,13 +37,13 @@ an LLM judge (Claude Haiku 5.5) checking every required conclusion and no forbid
 - **Cost:** $0.0037 a question at DeepSeek's off-peak price ($0.0023 chat, $0.0014 for the
   Haiku reranker), about 2x the course's best stage. Grading is not included.
 
-## What made the difference (ablations, dev split)
+## What made the difference (ablations on dev; retrieval also on test)
 
 | change | effect | |
 |---|---|---|
 | asking the user for missing facts | turning it off: task pass 0.684 -> 0.456 (-0.23, p 0.002) | the main lever |
 | data tools covering the records | accounts, refunds, subscriptions, invoices, API keys, feature flags, historical `as_of` lookups; the course's tools reach none of these (its tables cap record evidence at 0.79) | |
-| retrieval: dense -> BM25 -> hybrid -> 4B embeddings -> LLM reranker | recall@10 0.293 -> 0.456 -> 0.549 -> 0.604 -> **0.714** for one search | real for one search; inside the loop document evidence is level with the course's repeated searches (0.649 vs 0.620 on test) |
+| retrieval: dense -> BM25 -> hybrid -> 4B embeddings -> LLM reranker | **test:** recall@10 0.361 -> 0.406 -> 0.549 -> 0.586 -> **0.638** for one search (+0.28, CI [+0.23, +0.32]) | real for one search, hybrid fusion is the big step; inside the loop document evidence is level with the course's repeated searches (0.649 vs 0.620) |
 | one search tool vs one per document type | +0.09, inside run-to-run noise (0.05) | not a measured win |
 | bouncing answers that cite unseen ids (course's `disputed()`) | would fire on 1 of 60 answers, a false positive | not built |
 
@@ -76,8 +76,9 @@ an LLM judge (Claude Haiku 5.5) checking every required conclusion and no forbid
   questions its whole reply is a request for ids, which the course's runner grades as the
   answer. Compare s4 on questions needing records (0.324 vs 0.521).
 - **Weak question types:** multi-source (0.49) and tool-use diagnostic (0.42).
-- **The retrieval ladder is measured on dev only**, and the test split is now spent: any
-  further change needs a new held-out set before it can be claimed.
+- **The test split is now spent** (agent and retrieval each run once): any further
+  change needs a new held-out set before it can be claimed. On test, retrieval gains were
+  smaller than on dev (the reranker +0.05 vs +0.11).
 
 ## Architecture
 

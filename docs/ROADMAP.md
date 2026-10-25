@@ -1217,5 +1217,27 @@ dense-809-4b, hybrid-4b, hybrid-4b + Haiku rerank (top 20 -> 10, rerank trial 0)
 Metrics as in S2: recall@10, MRR@10, recall@20, per type and mode. Paired comparisons,
 each step against the one before: course-dense -> BM25 -> hybrid -> hybrid-4b -> + rerank,
 and course-dense -> hybrid-4b + rerank end to end.
+
+### S5b results: the retrieval ladder on test (2026-10-25, VM)
+
+Record: `evals/records/retrieval/s5b_test.md`. Recall@10 on 240 test questions (dev in
+brackets): course-dense 0.361 (0.293), BM25 0.406 (0.456), hybrid 0.549 (0.549),
+hybrid-4b 0.586 (0.604), **+ Haiku rerank 0.638 (0.714)**; MRR@10 0.269 -> 0.501.
+- **End to end +0.277 recall@10, CI [+0.23, +0.32], 120 wins / 6 losses.** Every step is
+  positive; all but the first have CIs that exclude 0.
+- **Hybrid fusion is the biggest single step** (+0.143 over BM25, CI [+0.10, +0.19]);
+  BM25 alone barely beats the course's dense index on test (+0.045, CI touches 0; on dev
+  it was +0.16, so dev overstated it).
+- **The hypothesis, settled:** BM25 wins on complete single-turn questions (+0.10 over
+  dense, p 0.04) and is level on vague progressive openers; it loses on temporal and
+  diagnostic questions, where dense is better. Hybrid takes the best of both on every
+  type. (S1 already showed BM25's edge is Chinese word overlap, not exact error codes.)
+- **The reranker helps only the vague questions:** progressive +0.087 (31/3/110),
+  single-turn 0.000; its dev gain (+0.11) halved on test (+0.05).
+- **4B embeddings over 0.6B:** dense alone +0.085 (0.354 -> 0.439); inside hybrid +0.037.
+- Interview line: "retrieval for one query: 0.36 -> 0.64 recall@10 on held-out
+  questions, most of it from fusing BM25 with dense; but an agent that can search again
+  narrows that gap to +0.03 in found documents, so the end-to-end gain came from asking
+  and record lookups, not retrieval."
 - Open: the deployed demo (optional; see the session note on its purpose), merging to
   `main` (Yi decides).
