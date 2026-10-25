@@ -468,10 +468,12 @@ hybrid is the big step; rerank helps only progressive questions (ROADMAP "S5b re
    S4a-S4e). The graders are closed: don't change them to make S4 look better.
 2. If Yi uploads the dataset zip, unpack it in the scratchpad (never the repo); S4a
    needs `data/generated/canonical/` and `evidence_resolution.jsonl`.
-3. S5 test run, cost and README done (ROADMAP "S5 results"). Open, Yi decides: a demo
-   (private; the dataset can't be published), merging to `main`. The test split is
-   spent: any further agent change needs a new held-out set before it can be claimed.
-4. No `main` branch exists on GitHub yet (2026-10-20); ask Yi before creating it.
+3. S5 done: test run, retrieval ladder on test, cost, README, merged to `main`. Open, Yi
+   decides: a demo (private; the dataset can't be published). The test split is spent:
+   any further change needs a new held-out set before it can be claimed.
+4. `main` created on GitHub at the end of S5 (2026-10-25, Yi asked), equal to
+   `claude/yifinancerag`; keep merging into it at stage ends. GitHub's default branch is
+   still `claude/yifinancerag` until Yi switches it in the repo settings.
 - Run records the next session may need: `evals/records/retrieval/` holds every S1/S2
   run summary and the paired tables (`s1_dev_paired.md`, `s2_dev_paired.md`,
   `s2_rerank_dev_paired.md`, `s2_user_facts_upper_bound.md`). The two rerank runs'
